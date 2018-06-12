@@ -1,0 +1,76 @@
+# levim Wolchok lab 2017
+# Script to auto submit a snakefile pipeline to cluster
+
+# Pipeline format:
+#WORKDIR="/data/wolchok/PROJECT/dr_dryrun2_L2/";SAMPLES="114432.N"; RID="L1 L2" #for preprocessing
+#WORKDIR="/data/wolchok/PROJECT/dr_APGI3198/";SAMPLES="APGI3198"; RID="L1" #for mut calling and mut_filter
+#WORKDIR="/data/wolchok/PROJECT/dr_APGI3198/";SAMPLES="APGI3198.N.L1"; RID="L1" #for HLA typing
+################################################################################
+# Project Config
+
+#getopts for argument input
+usage() { echo -en "LVMP v1.1 Pipeline Submission \nExample: lvmp_sub \n\t-w /data/PROJECT1/ \n\t-s Snakefile_prepro \n\t-c \"sample1.N sample1.T sample2.N sample2.T\" \n\t-r \"R1 R2\"\n\t-n 8 \nFlags:\n" && grep " .)\ #" $0; exit 0; }
+[ $# -eq 0 ] && usage
+while getopts ":hw:f:s:r:n:" arg; do
+    case $arg in
+        w) #Project directory
+            WORK_DIR=${OPTARG}
+            ;;
+        f) #Snakefile
+            REF=${OPTARG}
+            ;;
+        s) #Samples (Space separated string)
+            SAMPLES=${OPTARG}
+            ;;
+        r) #Run IDs (Space separated string)
+            RID=${OPTARG}
+            ;;
+        n) #Number of simultaneous jobs
+            NUM_JOBS=${OPTARG}
+            ;;
+        h | *) # Display help.
+            usage
+            exit 0
+            ;;
+    esac
+done
+
+################################################################################
+# Config from CLI
+
+#WORKDIR=$1
+#SNAKEFILE=$2
+#SAMPLES=$3
+#RID="L1 L2"
+#NUM_JOBS=$4
+
+################################################################################
+# Make workdirs for outputs if running for the first time
+cd $WORKDIR 
+dirs=("tmp" "log" "fastq" "counts" "fastqc" "indelrealign" "bqsr" "merge" "optitype" "snpeff" "clean" "index" "muTect" "muTect2" "strelka" "strelka2" "manta" "varscan2" "somaticsniper" "bam" "markdup" "sam" "sort" "HC")
+for ((i=0;i<${#dirs[@]};++i)); do mkdir -p ${dirs[$i]}; done
+
+################################################################################
+# Run
+
+# Dry run
+/home/mangaril/programs/miniconda3/bin/snakemake \
+    -d $WORKDIR \
+    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID" \
+    --snakefile $SNAKEFILE --dag | dot -Tpdf > "$SNAKEFILE"_dag.pdf
+
+# Cluster submission 
+/home/mangaril/programs/miniconda3/bin/snakemake \
+    -d $WORKDIR \
+    --latency-wait 120 \
+    --jobs $NUM_JOBS \
+    --snakefile $SNAKEFILE \
+    --rerun-incomplete \
+    --cluster "bsub -W {params.walltime} -R rusage[mem={params.mem}] -n {params.threads} -o $WORKDIR/log/o{params.name}.log -e $WORKDIR/log/e{params.name}.log" \
+    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID" 
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
