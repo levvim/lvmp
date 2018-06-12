@@ -1,5 +1,4 @@
 # Setup for lvmp pipeline
-################################################################################
 ## Specify installation and setup directories for pipeline dependencies
 
     FILE="/data/"
@@ -9,7 +8,6 @@
     
     mkdir -p $FILE $CONTAINERS $REFS
 
-################################################################################
 ## Install necessary containers
 #### This pipeline was originally developed using singularity (https://singularity.lbl.gov/index.html) containers in a cluster. If you are not using Singularity through environment modules, delete or comment out the `module add singularity;` lines from shell commands. Singularity installation is straightforward (taken from https://singularity.lbl.gov/install-linux): 
 
@@ -46,7 +44,6 @@
     docker pull biocontainers/bcftools:1.3.1
     docker pull levim/vep_samtools:1.0
 
-################################################################################
 ## Install Snakemake (locally)
 #### Follow the lines below to download/install miniconda and specify the installation directory within your `SCRIPTS` folder:
 
@@ -59,7 +56,6 @@
 
     $SCRIPTS/miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
 
-################################################################################
 ## Download reference genomes
 #### You will need to download the according necessary human GRCh37 (b37) reference genomes (available from the Broad Resource Bundle https://software.broadinstitute.org/gatk/download/bundle) into your REFS folder.
 
@@ -73,11 +69,6 @@
     1000G_phase1.snps.high_confidence.b37.vcf
     human.exome.b37.interval_list
 
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
 # To run:
 ### Set up a project directory (i.e. `PROJECT1`) and transfer your raw fastq files into the `fastq` subdirectory.
 #### The fastq files MUST be in a `SAMPLE.LANE.PAIR.fastq` naming format. For example, for two paired end samples with matching normal and tumor sequencing running across two lanes would have the following files: 
@@ -158,14 +149,4 @@
         --rerun-incomplete \
         --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID"
 
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
 

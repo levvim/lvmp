@@ -2,9 +2,6 @@
 # Script to auto submit a snakefile pipeline to cluster
 
 # Pipeline format:
-#WORKDIR="/data/wolchok/PROJECT/dr_dryrun2_L2/";SAMPLES="114432.N"; RID="L1 L2" #for preprocessing
-#WORKDIR="/data/wolchok/PROJECT/dr_APGI3198/";SAMPLES="APGI3198"; RID="L1" #for mut calling and mut_filter
-#WORKDIR="/data/wolchok/PROJECT/dr_APGI3198/";SAMPLES="APGI3198.N.L1"; RID="L1" #for HLA typing
 ################################################################################
 # Project Config
 
