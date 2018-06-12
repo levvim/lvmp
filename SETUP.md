@@ -9,7 +9,7 @@
     mkdir -p $FILE $CONTAINERS $REFS
 
 ## Install necessary containers
-#### This pipeline was originally developed using singularity (https://singularity.lbl.gov/index.html) containers in a cluster. If you are not using Singularity through environment modules, delete or comment out the `module add singularity;` lines from shell commands. Singularity installation is straightforward (taken from https://singularity.lbl.gov/install-linux): 
+#### This pipeline was originally developed using singularity (https://singularity.lbl.gov/index.html) containers in a cluster. If you are not using Singularity through cluster environment modules, delete or comment out the `module add singularity;` lines from shell commands. Singularity installation is straightforward (taken from https://singularity.lbl.gov/install-linux): 
 
     VERSION=2.5.1
     wget https://github.com/singularityware/singularity/releases/download/$VERSION/singularity-$VERSION.tar.gz
@@ -70,8 +70,9 @@
     human.exome.b37.interval_list
 
 # To run:
-### Set up a project directory (i.e. `PROJECT1`) and transfer your raw fastq files into the `fastq` subdirectory.
-#### The fastq files MUST be in a `SAMPLE.LANE.PAIR.fastq` naming format. For example, for two paired end samples with matching normal and tumor sequencing running across two lanes would have the following files: 
+### Set up a project directory (i.e. `PROJECT1`) and transfer your raw files into the appropriate  subdirectory.
+
+#### Pipelines requrire specific naming formats. For this preprocessing example, fastq files MUST be in a `SAMPLE.LANE.PAIR.fastq` naming format. For two paired end samples with matching normal and tumor sequencing running across two lanes would have the following files: 
 
     sample1.N.L1.01.fastq
     sample1.N.L1.02.fastq
@@ -94,7 +95,7 @@
     REFS="/levvim/refs/GRCh37hg19/"
     SCRIPTS="/levvim/scripts/"
     CONTAINERS="/levvim/singularity/"
-    NUM_JOBS=100 #number of jobs running in parallel 
+    NUM_JOBS=8 #number of jobs running in parallel 
 
 #### Specify project specific paramenters (project directory, samples, pipeline snakefile). Note that the formatting for this setup will change given on the step of the pipeline:
 

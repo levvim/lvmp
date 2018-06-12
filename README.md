@@ -1,8 +1,8 @@
 # lvmp: A genomics pipeline framework
 
-## lvmp is a collection of deployable genomics pipelines constructed in a methodical framework using Docker and Snakemake. We can alter, recontruct and add functions quickly using a modular structure. This structure can also scale for large parallel analyses and can deploy in different cluster environments.
+## lvmp is a collection of deployable genomics pipelines constructed in a methodical framework using Docker and Snakemake. We can alter, reconstruct and add functions quickly using a modular structure. This structure can also scale for large parallel analyses and can deploy in different cluster environments.
 
-Our file structure uses a directory for a given project, and subdirectories for each step. As the pipeline progresses we create intermediary files across step specific directories until we reach our final output. The pipeline specific dependencies are stored in separate `scripts`, `container`, and `reference` directories. The pipeline metrics are stored in a project specific log folder. Exmple:
+Our file structure uses a directory for a given project, and subdirectories for each step. As the pipeline progresses we create intermediary files across step specific directories until we reach our final output. The pipeline specific dependencies are stored in separate `scripts`, `container`, and `reference` directories. The pipeline metrics are stored in a project specific log folder. Example:
 
     |-scripts
     |---Snakefile_align
