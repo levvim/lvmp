@@ -1,0 +1,142 @@
+#levi mangarin wolchok lab 2018
+# lvmp rna_exp Snakefile_rna
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+## refs for using grch37 hg19 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+HAPMAP= os.path.join(REFS + "hapmap_3.3.b37.vcf")
+OMNI= os.path.join(REFS + "1000G_omni2.5.b37.vcf")
+P1000G= os.path.join(REFS + "1000G_phase1.snps.high_confidence.b37.vcf")
+INTERVALS= os.path.join(REFS + "human.exome.b37.interval_list")
+
+#STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
+#GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
+
+STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75")
+GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75.gtf')
+
+# Containers
+CONTAINERS=config["containers"]
+HGRNA=os.path.join(CONTAINERS + "hgrna.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+
+#Illumina TruSeq adapters
+ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
+ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
+
+################################################################################
+rule all:
+    #input: expand(FILE + "counts/{SAMPLE}_R1_001.fastqAligned.sortedByCoord.out.bam.txt",  SAMPLE = sample),
+    input: expand(FILE + "counts/{SAMPLE}.merge.bam.txt",  SAMPLE = sample),
+#        expand(FILE + 'rsem/{SAMPLE}_01.fastqAligned.sortedByCoord.out.bam.genes.results',  SAMPLE = sample)
+
+################################################################################
+#rule samtofastq:
+#    input:
+#        FILE + 'raw/{sample}.01.bam'
+#    output:
+#        L1 = FILE + 'rna_fastq/{sample}.01.fastq', L2 = FILE + 'rna_fastq/{sample}.02.fastq'
+#    params:
+#        walltime="04:00", mem="24", name="sn.b2f", threads="1"
+#    shell:
+#        'module add singularity; \
+#        singularity exec --bind /data/wolchok/PROJECT/:/data/wolchok/PROJECT/ /data/wolchok/singularity/dsprepro-1.0.simg \
+#        java -Xmx{params.mem}g -jar /picard-tools-1.140/picard.jar SamToFastq \
+#        I={input.bam} \
+#        FASTQ={output.L1} \
+#        SECOND_END_FASTQ={output.L2} '
+#        
+################################################################################
+rule align_reads:
+    input:
+        fastq1 = FILE + 'rna_fastq/{sample}.01.fastq', fastq2 = FILE + 'rna_fastq/{sample}.02.fastq', starref = STARREF, file=FILE, hgrna=HGRNA
+    output:
+        FILE + 'rna_fastq/{sample}.01.fastqAligned.sortedByCoord.out.bam'
+    params:
+        walltime="48:00", mem="32", name="sn.star", threads="6"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} {input.hgrna} "
+        "STAR "
+        "--genomeDir {input.starref} "
+        "--readFilesIn {input.fastq1} {input.fastq2} "
+        "--runThreadN {threads} "
+        "--outSAMtype BAM SortedByCoordinate "
+        "--outFileNamePrefix {input.fastq1} "
+
+rule merge_bam:
+    input:
+        L1 = FILE + 'rna_fastq/{sample}.L1.01.fastqAligned.sortedByCoord.out.bam', 
+        L2 = FILE + 'rna_fastq/{sample}.L2.01.fastqAligned.sortedByCoord.out.bam', 
+        #L3 = FILE + 'bam/{sample}.L3.fastqAligned.sortedByCoord.out.bam', 
+        tmpdir = FILE + "tmp/", file=FILE, picard=PICARD
+        #expand(FILE + 'bam/{{sample}}.{run}.bam', run=RID) 
+    output:
+        FILE + 'rna_fastq/{sample}.merge.bam'
+    params:
+        walltime="12:00", mem="64", name="sn.merge", threads="1"
+    shell:
+        #inputstr = " ".join(["INPUT={} \ ".format(x) for x in input])
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        
+        "MergeSamFiles "
+        "INPUT={input.L1} "
+        "INPUT={input.L2} "
+        #"INPUT={input.L3} "
+        "O={output}  "
+        "SORT_ORDER=coordinate  "
+        "VALIDATION_STRINGENCY=LENIENT  "
+        "CREATE_INDEX=true  "
+        "USE_THREADING=false  "
+        "TMP_DIR={input.tmpdir} "
+        "#MAX_RECORDS_IN_RAM=5000000; "
+
+################################################################################
+rule countreads:
+    input:
+        bam = FILE + 'rna_fastq/{sample}.merge.bam', gtf = GTF
+    output:
+        FILE + 'counts/{sample}.merge.bam.txt'
+    params:
+        walltime="8:00", mem="12", name="sn.cr", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind /data/wolchok/PROJECT/:/data/wolchok/PROJECT/ /data/wolchok/singularity/hgrna.img "
+        "featureCounts -p -T {threads} -t exon -g gene_id -a {input.gtf} -o {output} {input[0]}"
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################

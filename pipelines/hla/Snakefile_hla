@@ -1,0 +1,62 @@
+#levi mangarin wolchok lab 2016
+# lvmp hla
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+INTERVALS= os.path.join(REFS + "human.exome.b37.interval_list")
+
+OPTITYPE_REF= os.path.join(REFS + "optitype_hla_reference_dna.fasta")
+
+# Containers
+CONTAINERS=config["containers"]
+OPTITYPE=os.path.join(CONTAINERS + "optitype-writable.simg")
+
+################################################################################
+rule all:
+    input: expand(FILE + "optitype/{SAMPLE}/{SAMPLE}.tsv", SAMPLE = sample)
+
+################################################################################
+rule optitype:
+    input:
+         L1 = FILE + 'fastq/{sample}.01.fastq', L2=FILE + 'fastq/{sample}.02.fastq', outdir=FILE + "optitype/", file=FILE, optitype=OPTITYPE
+    output:
+         FILE + 'optitype/{sample}/{sample}.tsv'
+    params:
+        walltime="24:00", mem="32", name="sn.opti", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} {input.optitype} "
+        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} {input.L2} --dna -v --outdir {input.outdir};"
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
