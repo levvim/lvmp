@@ -71,13 +71,16 @@ rule muTect_merge:
     shell:
         "module add singularity; "
         "cd {input.file}muTect; "
-        "for i in *.vcf; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools view $i -Oz -o $i.gz; done; " #convert per chromosome vcfs to vcf.gz
-        "for i in *.vcf.gz; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools index $i; done; " #index gzipped vcfs
-        "singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools concat *.vcf.gz > {SAMPLE}.merged.vcf; " #merge vcf files
-        "singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools sort {SAMPLE}.merged.vcf -o {SAMPLE}.merge.vcf; " #sort vcf files
+        "SAMPLE={input.vcf}; "
+        "SAMPLE=${{SAMPLE%%.*}}; "
+        "SAMPLE=${{SAMPLE##*/}}; "
+        "for i in \"$SAMPLE\".*.vcf; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools view $i -Oz -o $i.gz; done; " #convert per chromosome vcfs to vcf.gz
+        "for i in \"$SAMPLE\".*.vcf.gz; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools index $i; done; " #index gzipped vcfs
+        "singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools concat \"$SAMPLE\".*.vcf.gz > \"$SAMPLE\".merged.vcf; " #merge vcf files
+        "singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools sort \"$SAMPLE\".merged.vcf -o \"$SAMPLE\".merge.vcf; " #sort vcf files
         "rm {SAMPLE}.merged.vcf; "
         "awk \"NR < 3 {{ print }}\" {input.cs} > {output.cs}; " #create header for merging call_stats files
-        "for i in *.call_stats.out; do echo $i; awk 'NR > 2 {{ print }} ' $i >> {output.cs}; done; " #concatenate call_stats files
+        "for i in \"$SAMPLE\".*.call_stats.out; do echo $i; awk 'NR > 2 {{ print }} ' $i >> {output.cs}; done; " #concatenate call_stats files
         "i=\"$(grep \"CHROM\" {input.vcf} | cut -f11)\"; " #create pairing file
         "j=\"$(grep \"CHROM\" {input.vcf} | cut -f10)\"; "
         "echo -e \"\"$i\"\\t\"$j\"\" > {output.pair}; "
@@ -112,7 +115,8 @@ rule muTect_filter:
         "   {output}1 "
         "   {output}2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
-        "awk -F\"\\t\" '$40==\"FILTER\" || $40==\"PASS\" {{print $0}}' {output}2 > {output}; "
+        "awk -F\"\\t\" 'NR==1  {{print $0}}' {output}1 > {output}; "
+        "grep \"PASS\" {output}1 >> {output}; "
 
 rule HaplotypeCaller_filter:
     input:

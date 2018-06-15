@@ -97,7 +97,7 @@
     CONTAINERS="/levvim/singularity/"
     NUM_JOBS=8 #number of jobs running in parallel 
 
-#### Specify project specific paramenters (project directory, samples, pipeline snakefile). Note that the formatting for this setup will change given on the step of the pipeline:
+#### Specify project specific paramenters (project directory, samples, pipeline snakefile). Note that the formatting for this setup will change given on the step of the pipeline (for example, mutation calling):
 
     #For sample preprocessing:
     WORKDIR="/levvim/PROJECT1/"; SAMPLES="sample1.N sample1.T sample2.N sample2.T"; RID="L1 L2"; SNAKEFILE="$HOME/scripts/Snakefile_hgsocci" 

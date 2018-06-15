@@ -51,26 +51,8 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 
 ################################################################################
 rule all:
-    #input: expand(FILE + "counts/{SAMPLE}_R1_001.fastqAligned.sortedByCoord.out.bam.txt",  SAMPLE = sample),
     input: expand(FILE + "counts/{SAMPLE}.merge.bam.txt",  SAMPLE = sample),
-#        expand(FILE + 'rsem/{SAMPLE}_01.fastqAligned.sortedByCoord.out.bam.genes.results',  SAMPLE = sample)
 
-################################################################################
-#rule samtofastq:
-#    input:
-#        FILE + 'raw/{sample}.01.bam'
-#    output:
-#        L1 = FILE + 'rna_fastq/{sample}.01.fastq', L2 = FILE + 'rna_fastq/{sample}.02.fastq'
-#    params:
-#        walltime="04:00", mem="24", name="sn.b2f", threads="1"
-#    shell:
-#        'module add singularity; \
-#        singularity exec --bind /data/wolchok/PROJECT/:/data/wolchok/PROJECT/ /data/wolchok/singularity/dsprepro-1.0.simg \
-#        java -Xmx{params.mem}g -jar /picard-tools-1.140/picard.jar SamToFastq \
-#        I={input.bam} \
-#        FASTQ={output.L1} \
-#        SECOND_END_FASTQ={output.L2} '
-#        
 ################################################################################
 rule align_reads:
     input:

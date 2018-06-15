@@ -50,8 +50,7 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 rule all:
     input: 
         expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample) #fastq to preprocessed bam
-        #expand(FILE + 'fastq/{SAMPLE}.01.fastq', SAMPLE = sample) #convert bams back to fastq
-        #expand(FILE + 'fastqc/{SAMPLE}_fastqc.html', SAMPLE = sample) #fastqc
+        expand(FILE + 'fastqc/{SAMPLE}_fastqc.html', SAMPLE = sample) #fastqc
 
 ################################################################################
 #QC and prep 
@@ -66,30 +65,6 @@ rule FastQC:
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "/FastQC/fastqc --noextract -o {input.file}fastqc/ {input.fastq}; "
 
-##Convert to fastq (if given bam)
-#rule bamtofastq:
-#    input:
-#        bam=FILE + 'raw/{sample}.bam', file=FILE, prepro=PREPRO, picard=PICARD, refs=REFS
-#    output:
-#        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
-#    params:
-#        walltime="08:00", mem="48", name="sn.b2f", threads="1"
-#    shell:
-#        "module add singularity; "
-#        "cd {input.file}; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-#        "samtools sort -O bam {input.bam} -o {input.bam}.sort;"
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-#        "samtools index {input.bam}.sort; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-#        "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
-#        "SamToFastq "
-#        "I={input.bam}.sort  "
-#        "FASTQ={output.L1}  "
-#        "SECOND_END_FASTQ={output.L2}  "
-#        #"OUTPUT_PER_RG=TRUE "
-#        #"RG_TAG=PU "
-#
 ################################################################################
 Trim
 rule cutadapt:
@@ -169,18 +144,6 @@ rule merge_bam:
 #################################################################################
 # Sort and add Readgroups (performed in bwa step)
 
-#rule clean_bam:
-#    input:
-#         FILE + 'bam/{sample}.bam', file=FILE, picard=PICARD, refs=REFS
-#    output:
-#         FILE + 'clean/{sample}.clean.bam
-#    params:
-#        walltime="04:00", mem="16", name="sn.clean"
-#    shell:
-#        #"module add singularity; "
-#        #"singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-#        #"java -jar -Xmx{params.mem}g /usr/picard/picard.jar CleanSam INPUT={input} OUTPUT={output} "
-
 rule sort:
     input:
          #bam=FILE + 'bam/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS #skip merge step if only one lane 
@@ -195,7 +158,6 @@ rule sort:
         "samtools sort -O bam {input.bam} -o {output};"
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "samtools index {output} "
-
 
 ##################################################################################
 #Indel Realignment, Base Square Recalibration, MarkDuplicates
