@@ -13,7 +13,7 @@ This pipeline is called in 3 parts: Preprocessing, mutation calling then filteri
     #For Mutation filtering, rescue and annotation (from *.vcf to *.maf for muTect and HaplotypeCaller respectively, as well as a merged *.maf with vep annotation):
     WORKDIR="/levvim/PROJECT1/"; SAMPLES="sample1 sample2"; RID="L1 L2"; SNAKEFILE="$HOME/scripts/Snakefile_mut_filter" 
 
-We can also start this fom a previously aligned \*.bam file by first running a conversion fastq:
+We can also start this fom a previously aligned \*.bam file by first running a conversion fastq (note that there would only be one lane):
 
     #For converting back to raw reads (from *.bam to *.fastq):
     WORKDIR="/levvim/PROJECT1/"; SAMPLES="sample1.N sample1.T sample2.N sample2.T"; RID="L1 L2"; SNAKEFILE="$HOME/scripts/Snakefile_b2f" 

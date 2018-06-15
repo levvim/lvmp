@@ -81,8 +81,8 @@ rule muTect_merge:
         "rm {SAMPLE}.merged.vcf; "
         "awk \"NR < 3 {{ print }}\" {input.cs} > {output.cs}; " #create header for merging call_stats files
         "for i in \"$SAMPLE\".*.call_stats.out; do echo $i; awk 'NR > 2 {{ print }} ' $i >> {output.cs}; done; " #concatenate call_stats files
-        "i=\"$(grep \"CHROM\" {input.vcf} | cut -f11)\"; " #create pairing file
-        "j=\"$(grep \"CHROM\" {input.vcf} | cut -f10)\"; "
+        "i=\"$(grep \"CHROM\" {input.vcf} | sed -e \"y/\\t/\\n/\" | grep \"\\.N\\.\")\"; " #create pairing file, cut normal ID
+        "j=\"$(grep \"CHROM\" {input.vcf} | sed -e \"y/\\t/\\n/\" | grep \"\\.T\\.\")\"; " #create pairing file, cut normal ID
         "echo -e \"\"$i\"\\t\"$j\"\" > {output.pair}; "
 
 rule muTect_filter:

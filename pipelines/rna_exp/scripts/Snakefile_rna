@@ -42,7 +42,7 @@ GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75
 
 # Containers
 CONTAINERS=config["containers"]
-HGRNA=os.path.join(CONTAINERS + "hgrna.simg")
+HGRNA=os.path.join(CONTAINERS + "hgrna-1.0.simg")
 PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
 
 #Illumina TruSeq adapters

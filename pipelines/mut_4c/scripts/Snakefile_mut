@@ -44,25 +44,27 @@ CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
 PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
 GATK=os.path.join(CONTAINERS + "gatk-4.0.1.2.simg")
 MUTECT=os.path.join(CONTAINERS + "mutect-1.1.7.simg")
-HGMUT=os.path.join(CONTAINERS + "hgmut.simg")
+MUTECT=os.path.join(CONTAINERS + "mutect-1.1.7.jar")
+HGMUT=os.path.join(CONTAINERS + "hgmut-1.0.simg")
+VARSCAN=os.path.join(SCRIPTS + "VarScan.v2.4.3.jar")
 
 #################################################################################
 rule all:
     input: 
         expand(FILE + 'muTect2/{SAMPLE}.T.vcf', SAMPLE=sample),
-        expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE=sample)
-        expand(FILE + 'muTect/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region),
+        expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE=sample),
+        #expand(FILE + 'muTect/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region),
+        expand(FILE + 'muTect/{SAMPLE}.T.vcf', SAMPLE=sample),
         expand(FILE + 'strelka2/{SAMPLE}.T/results/variants/somatic.snvs.vcf.gz', SAMPLE=sample),
         expand(FILE + 'somaticsniper/{SAMPLE}.T.vcf', SAMPLE=sample),
         expand(FILE + 'varscan2/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region),
-        expand(FILE + 'muTect/{SAMPLE}.rescue.T.vcf', SAMPLE=sample),
         expand(FILE + 'HC/{SAMPLE}.T.vcf', SAMPLE=sample)
  
 #################################################################################
 # Combine readgroups
 rule readgroups_bam:
     input:
-        fastq = FILE + 'fastq/{sample}.L1.01.fastq', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, prepro=PREPRO, picard=PICARD,scripts=SCRIPTS
+        fastq = FILE + 'fastq/{sample}.L1.01.fastq', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, prepro=PREPRO, picard=PICARD,scripts=SCRIPTS, refs=REFS
     output:
         FILE + "bqsr/{sample}.pp.rg.bam"
     threads: 1
@@ -101,8 +103,8 @@ rule muTect:
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
         "NORMAL_FIXED=${{NORMAL%%.*}}; "
         "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
-        " java -jar -Xmx{params.mem}G mutect-1.1.7.jar -T MuTect "
+        #"singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G {input.mutect} -T MuTect "
         " --reference_sequence {input.ref} "
         " --input_file:tumor {input.tumor} "
         " --input_file:normal {input.normal} "
@@ -113,7 +115,7 @@ rule muTect:
 
 rule muTect_rescue:
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, vcf = FILE + 'muTect/{sample}.T.vcf', prepro=PREPRO
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, vcf = FILE + 'muTect/{sample}.T.vcf', prepro=PREPRO, scripts=SCRIPTS
     output:
          FILE + 'muTect/{sample}.rescue.T.vcf'
     threads: 1
@@ -125,8 +127,8 @@ rule muTect_rescue:
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
         "NORMAL_FIXED=${{NORMAL%%.*}}; "
         "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "python $HOME/scripts/DMP_rescue.py "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+        "python {input.scripts}/DMP_rescue.py "
         "--vcf {input.vcf} "
         "--txt {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.out"
         "--tumor_id {input.file}fastq/\"$TUMOR_FIXED\".T.01 "
@@ -184,8 +186,6 @@ rule muTect2:
         ' --output {input.file}muTect2/\"$TUMOR_FIXED\".T.vcf '
         
 rule somaticsniper:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
     output:
@@ -198,8 +198,6 @@ rule somaticsniper:
 
 
 rule strelka:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP,scripts=SCRIPTS
     output:
@@ -233,8 +231,6 @@ rule strelka:
         "make -j {threads}; "
 
 rule strelka2:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
     output:
@@ -303,8 +299,6 @@ rule strelka2:
 # Annotation
 
 rule snpeff_muTect:
-    singularity:
-        "docker://levim/hgmut"
     input:
          tumor = FILE + 'muTect/{sample}.T.vcf', file = FILE
     output:
@@ -323,8 +317,6 @@ rule snpeff_muTect:
         "   |perl ~/programs/snpEff-3.2/scripts/vcfEffOnePerLine.pl  > \"$TUMOR_FIXED\".T.vcf.neo.ann "
 
 rule snpeff_strelka:
-    singularity:
-        "docker://levim/hgmut"
     input:
          tumor = FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf', file = FILE
     output:
@@ -353,8 +345,6 @@ rule snpeff_strelka:
 ################################################################################
 ################################################################################
 #rule varscan2:
-#    singularity:
-#        "docker://levim/hgmut"
 #    input:
 #         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
 #    output:
@@ -374,8 +364,6 @@ rule snpeff_strelka:
 #        "for((i=0;i<$\"${{#REGION[@]}}\";++i)); do rm {output}.\"${{REGION[$i]}}\"; done "
 
 #rule varscan2:
-#    singularity:
-#        "docker://levim/hgmut"
 #    input:
 #         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
 #         #file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, normal = lambda wc: srn_paths[wc.sample, wc.region], tumor = lambda wc: srt_paths[wc.sample, wc.region]
@@ -391,10 +379,8 @@ rule snpeff_strelka:
 #        "java -jar -Xmx{params.mem}G -jar $HOME/programs/VarScan.v2.4.3.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_1:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.1.T.vcf'
     threads: 1
@@ -407,10 +393,8 @@ rule varscan2_1:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_2:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.2.T.vcf'
     threads: 1
@@ -423,10 +407,8 @@ rule varscan2_2:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_3:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.3.T.vcf'
     threads: 1
@@ -439,10 +421,8 @@ rule varscan2_3:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_4:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.4.T.vcf'
     threads: 1
@@ -455,10 +435,8 @@ rule varscan2_4:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_5:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.5.T.vcf'
     threads: 1
@@ -471,10 +449,8 @@ rule varscan2_5:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_6:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.6.T.vcf'
     threads: 1
@@ -487,10 +463,8 @@ rule varscan2_6:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_7:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.7.T.vcf'
     threads: 1
@@ -503,10 +477,8 @@ rule varscan2_7:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_8:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.8.T.vcf'
     threads: 1
@@ -519,10 +491,8 @@ rule varscan2_8:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_9:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.9.T.vcf'
     threads: 1
@@ -535,10 +505,8 @@ rule varscan2_9:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_10:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.10.T.vcf'
     threads: 1
@@ -551,10 +519,8 @@ rule varscan2_10:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_11:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.11.T.vcf'
     threads: 1
@@ -567,10 +533,8 @@ rule varscan2_11:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_12:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.12.T.vcf'
     threads: 1
@@ -583,10 +547,8 @@ rule varscan2_12:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_13:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.13.T.vcf'
     threads: 1
@@ -599,10 +561,8 @@ rule varscan2_13:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_14:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.14.T.vcf'
     threads: 1
@@ -615,10 +575,8 @@ rule varscan2_14:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_15:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.15.T.vcf'
     threads: 1
@@ -631,10 +589,8 @@ rule varscan2_15:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_16:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.16.T.vcf'
     threads: 1
@@ -647,10 +603,8 @@ rule varscan2_16:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_17:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.17.T.vcf'
     threads: 1
@@ -663,10 +617,8 @@ rule varscan2_17:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_18:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.18.T.vcf'
     threads: 1
@@ -679,10 +631,8 @@ rule varscan2_18:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_19:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.19.T.vcf'
     threads: 1
@@ -695,10 +645,8 @@ rule varscan2_19:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_20:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.20.T.vcf'
     threads: 1
@@ -711,10 +659,8 @@ rule varscan2_20:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_21:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.21.T.vcf'
     threads: 1
@@ -727,10 +673,8 @@ rule varscan2_21:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_22:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.22.T.vcf'
     threads: 1
@@ -743,10 +687,8 @@ rule varscan2_22:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_X:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.X.T.vcf'
     threads: 1
@@ -759,10 +701,8 @@ rule varscan2_X:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_Y:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.Y.T.vcf'
     threads: 1
@@ -775,10 +715,8 @@ rule varscan2_Y:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_MT:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.MT.T.vcf'
     threads: 1
@@ -791,10 +729,8 @@ rule varscan2_MT:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002071:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000207.1.T.vcf'
     threads: 1
@@ -807,10 +743,8 @@ rule varscan2_GL0002071:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002261:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000226.1.T.vcf'
     threads: 1
@@ -823,10 +757,8 @@ rule varscan2_GL0002261:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002291:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000229.1.T.vcf'
     threads: 1
@@ -839,10 +771,8 @@ rule varscan2_GL0002291:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002311:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000231.1.T.vcf'
     threads: 1
@@ -855,10 +785,8 @@ rule varscan2_GL0002311:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002101:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000210.1.T.vcf'
     threads: 1
@@ -871,10 +799,8 @@ rule varscan2_GL0002101:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002391:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000239.1.T.vcf'
     threads: 1
@@ -887,10 +813,8 @@ rule varscan2_GL0002391:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002351:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000235.1.T.vcf'
     threads: 1
@@ -903,10 +827,8 @@ rule varscan2_GL0002351:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002011:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000201.1.T.vcf'
     threads: 1
@@ -919,10 +841,8 @@ rule varscan2_GL0002011:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002471:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000247.1.T.vcf'
     threads: 1
@@ -935,10 +855,8 @@ rule varscan2_GL0002471:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002451:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000245.1.T.vcf'
     threads: 1
@@ -951,10 +869,8 @@ rule varscan2_GL0002451:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001971:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000197.1.T.vcf'
     threads: 1
@@ -967,10 +883,8 @@ rule varscan2_GL0001971:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002031:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000203.1.T.vcf'
     threads: 1
@@ -983,10 +897,8 @@ rule varscan2_GL0002031:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002461:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000246.1.T.vcf'
     threads: 1
@@ -999,10 +911,8 @@ rule varscan2_GL0002461:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002491:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000249.1.T.vcf'
     threads: 1
@@ -1015,10 +925,8 @@ rule varscan2_GL0002491:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001961:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000196.1.T.vcf'
     threads: 1
@@ -1031,10 +939,8 @@ rule varscan2_GL0001961:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002481:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000248.1.T.vcf'
     threads: 1
@@ -1047,10 +953,8 @@ rule varscan2_GL0002481:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002441:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000244.1.T.vcf'
     threads: 1
@@ -1063,10 +967,8 @@ rule varscan2_GL0002441:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002381:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000238.1.T.vcf'
     threads: 1
@@ -1079,10 +981,8 @@ rule varscan2_GL0002381:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002021:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000202.1.T.vcf'
     threads: 1
@@ -1095,10 +995,8 @@ rule varscan2_GL0002021:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002341:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000234.1.T.vcf'
     threads: 1
@@ -1111,10 +1009,8 @@ rule varscan2_GL0002341:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002321:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000232.1.T.vcf'
     threads: 1
@@ -1127,10 +1023,8 @@ rule varscan2_GL0002321:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002061:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000206.1.T.vcf'
     threads: 1
@@ -1143,10 +1037,8 @@ rule varscan2_GL0002061:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002401:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000240.1.T.vcf'
     threads: 1
@@ -1159,10 +1051,8 @@ rule varscan2_GL0002401:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002361:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000236.1.T.vcf'
     threads: 1
@@ -1175,10 +1065,8 @@ rule varscan2_GL0002361:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002411:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000241.1.T.vcf'
     threads: 1
@@ -1191,10 +1079,8 @@ rule varscan2_GL0002411:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002431:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000243.1.T.vcf'
     threads: 1
@@ -1207,10 +1093,8 @@ rule varscan2_GL0002431:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002421:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000242.1.T.vcf'
     threads: 1
@@ -1223,10 +1107,8 @@ rule varscan2_GL0002421:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002301:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000230.1.T.vcf'
     threads: 1
@@ -1239,10 +1121,8 @@ rule varscan2_GL0002301:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002371:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000237.1.T.vcf'
     threads: 1
@@ -1255,10 +1135,8 @@ rule varscan2_GL0002371:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002331:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000233.1.T.vcf'
     threads: 1
@@ -1271,10 +1149,8 @@ rule varscan2_GL0002331:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002041:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000204.1.T.vcf'
     threads: 1
@@ -1287,10 +1163,8 @@ rule varscan2_GL0002041:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001981:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000198.1.T.vcf'
     threads: 1
@@ -1303,10 +1177,8 @@ rule varscan2_GL0001981:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002081:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000208.1.T.vcf'
     threads: 1
@@ -1319,10 +1191,8 @@ rule varscan2_GL0002081:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001911:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000191.1.T.vcf'
     threads: 1
@@ -1335,10 +1205,8 @@ rule varscan2_GL0001911:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002271:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000227.1.T.vcf'
     threads: 1
@@ -1351,10 +1219,8 @@ rule varscan2_GL0002271:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002281:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000228.1.T.vcf'
     threads: 1
@@ -1367,10 +1233,8 @@ rule varscan2_GL0002281:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002141:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000214.1.T.vcf'
     threads: 1
@@ -1383,10 +1247,8 @@ rule varscan2_GL0002141:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002211:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000221.1.T.vcf'
     threads: 1
@@ -1399,10 +1261,8 @@ rule varscan2_GL0002211:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002091:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000209.1.T.vcf'
     threads: 1
@@ -1415,10 +1275,8 @@ rule varscan2_GL0002091:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002181:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000218.1.T.vcf'
     threads: 1
@@ -1431,10 +1289,8 @@ rule varscan2_GL0002181:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002201:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000220.1.T.vcf'
     threads: 1
@@ -1447,10 +1303,8 @@ rule varscan2_GL0002201:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002131:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000213.1.T.vcf'
     threads: 1
@@ -1463,10 +1317,8 @@ rule varscan2_GL0002131:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002111:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000211.1.T.vcf'
     threads: 1
@@ -1479,10 +1331,8 @@ rule varscan2_GL0002111:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001991:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000199.1.T.vcf'
     threads: 1
@@ -1495,10 +1345,8 @@ rule varscan2_GL0001991:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002171:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000217.1.T.vcf'
     threads: 1
@@ -1511,10 +1359,8 @@ rule varscan2_GL0002171:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002161:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000216.1.T.vcf'
     threads: 1
@@ -1527,10 +1373,8 @@ rule varscan2_GL0002161:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002151:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000215.1.T.vcf'
     threads: 1
@@ -1543,10 +1387,8 @@ rule varscan2_GL0002151:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002051:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000205.1.T.vcf'
     threads: 1
@@ -1559,10 +1401,8 @@ rule varscan2_GL0002051:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002191:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000219.1.T.vcf'
     threads: 1
@@ -1575,10 +1415,8 @@ rule varscan2_GL0002191:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002241:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000224.1.T.vcf'
     threads: 1
@@ -1591,10 +1429,8 @@ rule varscan2_GL0002241:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002231:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000223.1.T.vcf'
     threads: 1
@@ -1607,10 +1443,8 @@ rule varscan2_GL0002231:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001951:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000195.1.T.vcf'
     threads: 1
@@ -1623,10 +1457,8 @@ rule varscan2_GL0001951:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002121:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000212.1.T.vcf'
     threads: 1
@@ -1639,10 +1471,8 @@ rule varscan2_GL0002121:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002221:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000222.1.T.vcf'
     threads: 1
@@ -1655,10 +1485,8 @@ rule varscan2_GL0002221:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002001:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000200.1.T.vcf'
     threads: 1
@@ -1671,10 +1499,8 @@ rule varscan2_GL0002001:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001931:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000193.1.T.vcf'
     threads: 1
@@ -1687,10 +1513,8 @@ rule varscan2_GL0001931:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001941:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000194.1.T.vcf'
     threads: 1
@@ -1703,10 +1527,8 @@ rule varscan2_GL0001941:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0002251:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000225.1.T.vcf'
     threads: 1
@@ -1719,10 +1541,8 @@ rule varscan2_GL0002251:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_GL0001921:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.GL000192.1.T.vcf'
     threads: 1
@@ -1735,10 +1555,8 @@ rule varscan2_GL0001921:
         "java -jar -Xmx{params.mem}G -jar {input.varscan} somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
 rule varscan2_NC_007605:
-    singularity:
-        "docker://levim/hgmut"
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, varscan=VARSCAN
     output:
          FILE + 'varscan2/{sample}.NC_007605.T.vcf'
     threads: 1
@@ -1762,8 +1580,6 @@ rule varscan2_NC_007605:
 ################################################################################
 ################################################################################
 rule muTect_1:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1792,8 +1608,6 @@ rule muTect_1:
         " --downsampling_type NONE "
 
 rule muTect_2:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1822,8 +1636,6 @@ rule muTect_2:
         " --downsampling_type NONE "
 
 rule muTect_3:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1852,8 +1664,6 @@ rule muTect_3:
         " --downsampling_type NONE "
 
 rule muTect_4:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1882,8 +1692,6 @@ rule muTect_4:
         " --downsampling_type NONE "
 
 rule muTect_5:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1912,8 +1720,6 @@ rule muTect_5:
         " --downsampling_type NONE "
 
 rule muTect_6:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1942,8 +1748,6 @@ rule muTect_6:
         " --downsampling_type NONE "
 
 rule muTect_7:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -1972,8 +1776,6 @@ rule muTect_7:
         " --downsampling_type NONE "
 
 rule muTect_8:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2002,8 +1804,6 @@ rule muTect_8:
         " --downsampling_type NONE "
 
 rule muTect_9:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2032,8 +1832,6 @@ rule muTect_9:
         " --downsampling_type NONE "
 
 rule muTect_10:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2062,8 +1860,6 @@ rule muTect_10:
         " --downsampling_type NONE "
 
 rule muTect_11:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2092,8 +1888,6 @@ rule muTect_11:
         " --downsampling_type NONE "
 
 rule muTect_12:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2122,8 +1916,6 @@ rule muTect_12:
         " --downsampling_type NONE "
 
 rule muTect_13:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2152,8 +1944,6 @@ rule muTect_13:
         " --downsampling_type NONE "
 
 rule muTect_14:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2182,8 +1972,6 @@ rule muTect_14:
         " --downsampling_type NONE "
 
 rule muTect_15:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2212,8 +2000,6 @@ rule muTect_15:
         " --downsampling_type NONE "
 
 rule muTect_16:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2242,8 +2028,6 @@ rule muTect_16:
         " --downsampling_type NONE "
 
 rule muTect_17:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2272,8 +2056,6 @@ rule muTect_17:
         " --downsampling_type NONE "
 
 rule muTect_18:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2302,8 +2084,6 @@ rule muTect_18:
         " --downsampling_type NONE "
 
 rule muTect_19:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2332,8 +2112,6 @@ rule muTect_19:
         " --downsampling_type NONE "
 
 rule muTect_20:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2362,8 +2140,6 @@ rule muTect_20:
         " --downsampling_type NONE "
 
 rule muTect_21:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2392,8 +2168,6 @@ rule muTect_21:
         " --downsampling_type NONE "
 
 rule muTect_22:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2422,8 +2196,6 @@ rule muTect_22:
         " --downsampling_type NONE "
 
 rule muTect_X:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2452,8 +2224,6 @@ rule muTect_X:
         " --downsampling_type NONE "
 
 rule muTect_Y:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2482,8 +2252,6 @@ rule muTect_Y:
         " --downsampling_type NONE "
 
 rule muTect_MT:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2512,8 +2280,6 @@ rule muTect_MT:
         " --downsampling_type NONE "
 
 rule muTect_GL0002071:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2542,8 +2308,6 @@ rule muTect_GL0002071:
         " --downsampling_type NONE "
 
 rule muTect_GL0002261:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2572,8 +2336,6 @@ rule muTect_GL0002261:
         " --downsampling_type NONE "
 
 rule muTect_GL0002291:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2602,8 +2364,6 @@ rule muTect_GL0002291:
         " --downsampling_type NONE "
 
 rule muTect_GL0002311:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
@@ -2632,8 +2392,6 @@ rule muTect_GL0002311:
         " --downsampling_type NONE "
 
 rule muTect_GL0002101:
-    singularity:
-        "docker://levim/hgmut"
     input:
          normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC
     output:
