@@ -11,3 +11,8 @@ We can also start this fom a previously aligned \*.bam file by first running a c
 
     #For converting back to raw reads (from *.bam to *.fastq):
     WORKDIR="/levvim/PROJECT1/"; SAMPLES="sample1.N sample1.T sample2.N sample2.T"; RID="L1 L2"; SNAKEFILE="$HOME/scripts/Snakefile_b2f" 
+
+This pipeline also requires the relevant singularity/docker images:
+    
+    singularity pull docker://levim/hgrna:1.0
+    singularity pull docker://levim/dsprepro:1.1
