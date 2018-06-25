@@ -37,31 +37,47 @@ OPTITYPE=os.path.join(CONTAINERS + "optitype-release-v1.3.1.simg")
 ################################################################################
 rule all:
     input: expand(FILE + "optitype/{SAMPLE}/{SAMPLE}.tsv", SAMPLE = sample)
-    #input: expand(FILE + "fastq/{SAMPLE}.cat.01.fastq", SAMPLE = sample)
 
 ################################################################################
-rule cat_fastq:
+rule dl_sam:
     input:
-        fastq1 = expand(FILE + 'fastq/{SAMPLE}.{RUN}.01.fastq', SAMPLE=sample, RUN=RID),
-        fastq2 = expand(FILE + 'fastq/{SAMPLE}.{RUN}.02.fastq', SAMPLE=sample, RUN=RID),
-        prepro=PREPRO, file=FILE
+        file=FILE, prepro=PREPRO
     output:
-        fastq1=FILE + 'fastq/{sample}.cat.01.fastq',
-        fastq2=FILE + 'fastq/{sample}.cat.02.fastq'
+        sam=temp(FILE + 'sam/{sample}.sam'),
     params:
-        walltime="24:00", mem="4", name="sn.opti", threads="1"
-    run:
-        inputstr1 = " ".join([" {} ".format(x) for x in input.fastq1])
-        inputstr2 = " ".join([" {} ".format(x) for x in input.fastq2])
-        shell("module add singularity; "
-        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "cat {inputstr1} > {output.fastq1}; "
-        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "cat {inputstr2} > {output.fastq2}; ")
+        walltime="24:00", mem="4", name="sn.sra", threads="1", SID='{sample}'
+    shell:
+        "module add singularity; "
+        "cd {input.file}/sam; "
+        "/data/wolchok/david/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/vdb-config --import /data/wolchok/david/compass/prj_16485.ngc . ; "
+        "/data/wolchok/david/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/sam-dump.2.9.0 -s {params.SID} "
+        "--aligned-region 6:28510120-33480577 "
+        "> {output} "
+
+rule bamtofastq:
+    input:
+        bam=FILE + 'sam/{sample}.sam', file=FILE, prepro=PREPRO, refs=REFS
+    output:
+        L1 = FILE + 'fastq/{sample}.fastq'
+    params:
+        walltime="24:00", mem="48", name="sn.b2f", threads="1"
+    shell:
+        "module add singularity; "
+        "cd {input.file}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools view -bS {input.bam} -o {input.bam}.bam; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools sort -O bam {input.bam}.bam -o {input.bam}.sort.bam; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools index {input.bam}.sort.bam; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "/bedtools2/bin/bedtools bamtofastq -i {input.bam}.sort.bam -fq {output.L1}; "
+        "rm {input.bam}.bam; "
+        "rm {input.bam}.sort.bam; "
 
 rule optitype:
     input:
-         L1 = FILE + 'fastq/{sample}.cat.01.fastq', L2=FILE + 'fastq/{sample}.cat.02.fastq', outdir=FILE + "optitype/", file=FILE, optitype=OPTITYPE
+         L1 = FILE + 'fastq/{sample}.fastq', outdir=FILE + "optitype/", file=FILE, optitype=OPTITYPE
     output:
          FILE + 'optitype/{sample}/{sample}.tsv'
     params:
@@ -72,9 +88,8 @@ rule optitype:
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
         "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
         "singularity exec --bind {input.file}:{input.file} {input.optitype} "
-        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} {input.L2} --dna -v --outdir {input.outdir}/\"$SAMPLE\";"
+        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} --dna -v --outdir {input.outdir}/\"$SAMPLE\";"
         "rm {input.L1}; "
-        "rm {input.L2}; "
         "touch {output};"
 
 ################################################################################
