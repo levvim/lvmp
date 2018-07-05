@@ -55,7 +55,7 @@ rule all:
 #Convert to fastq
 rule bamtofastq:
     input:
-        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS
+        bam=FILE + 'raw/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS
     output:
         L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
 
@@ -68,9 +68,8 @@ rule bamtofastq:
         "samtools sort -O bam {input.bam} -o {input.bam}.sort;"
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "samtools index {input.bam}.sort; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-        "java -Xmx{params.mem}G -jar /usr/picard/picard.jar SamToFastq "
-        "I={input.bam}  "
-        "FASTQ={output.L1}  "
-        "SECOND_END_FASTQ={output.L2}  "
-
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "/bedtools2/bin/bamToFastq "
+        "-i {input.bam} "
+        "-fq {output.L1} "
+        "-fq2 {output.L2} "
