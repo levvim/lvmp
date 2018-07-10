@@ -60,7 +60,7 @@ rule FastQC:
     params:
         walltime="12:00", mem="8", name="sn.fastqc", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "fq1={input.fastq1}; fq2={input.fastq2}; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "/FastQC/fastqc --noextract -o {input.file}fastqc/ {input.fastq}; "
@@ -78,7 +78,7 @@ rule cutadapt:
     params:
         walltime="12:00", mem="16", name="sn.cutadapt", adapter_r1=ADAPTER_R1, adapter_r2=ADAPTER_R2, threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.cutadapt} "
         "cutadapt -a {params.adapter_r1} -A {params.adapter_r2} "
         "-o {output.fastq1} -p {output.fastq2} "
@@ -105,7 +105,10 @@ rule bwa_mem:
         "bwa mem {input.ref} -R \"$readgroup\" -M -t {params.threads} -P -v 3  "
         "{input.R1} "
         "{input.R2} "
-        "> {output} "
+        "> {output}; "
+        #"gunzip {input.R1};"
+        #"gunzip {input.R2};"
+
 
 ################################################################################
 rule samtobam:
@@ -114,13 +117,13 @@ rule samtobam:
     params:
         walltime="96:00", mem="24", name="sn.s2b", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.refs}:{input.refs} --bind {input.file}:{input.file} {input.prepro} "
         "samtools view -Sb {input.sam} > {output}; "
 
 rule merge_bam:
     input:
-        bam = expand(FILE + 'bam/{SAMPLE}.{RUN}.bam', SAMPLE=sample, RUN=RID), 
+        bam = expand(FILE + 'bam/{{sample}}.{RUN}.bam', RUN=RID), 
         tmpdir = FILE + "tmp/", file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS
     output:
          temp(FILE + 'merge/{sample}.bam')
@@ -149,13 +152,14 @@ rule sort:
          #bam=FILE + 'bam/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS #skip merge step if only one lane 
          bam=FILE + 'merge/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS
     output:
-         temp(FILE + 'sort/{sample}.sort.bam')
+         FILE + 'sort/{sample}.sort.bam'
     params:
         walltime="96:00", mem="32", name="sn.sort", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "samtools sort -O bam {input.bam} -o {output};"
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "samtools index {output} "
 
@@ -169,7 +173,7 @@ rule index_and_realign_info:
     params:
         walltime="24:00", mem="24", name="sn.ri", threads="4"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
         "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
         "-T RealignerTargetCreator "
@@ -186,11 +190,11 @@ rule realign_bam:
     input:
         bam = FILE + 'sort/{sample}.sort.bam', ref = REF, intervals = FILE + 'indelrealign/{sample}.sort.intervals', dbsnp = DBSNP138e, gold = GOLD_INDELS, file=FILE, gatk=GATK, prepro=PREPRO, refs=REFS
     output:
-        FILE + 'indelrealign/{sample}.sort.ir.bam'
+        temp(FILE + 'indelrealign/{sample}.sort.ir.bam')
     params:
         walltime="24:00", mem="24", name="sn.rb", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
         "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
         "-T IndelRealigner "
@@ -217,7 +221,7 @@ rule fixmateinfo_bam:
     params:
         walltime="24:00", mem="24", name="sn.fmi", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
         "FixMateInformation "
@@ -238,7 +242,7 @@ rule markduplicates:
     params: 
         walltime="12:00", mem="24", name="sn.md", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
         "MarkDuplicates "
@@ -247,7 +251,7 @@ rule markduplicates:
         "METRICS_FILE={output}.metrics.txt "
         "MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 "
         "TMP_DIR={input.tmpdir}; "
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "samtools index {output}"
         #"REMOVE_DUPLICATES=true "
@@ -261,7 +265,7 @@ rule baserecalibrator:
     params:
         walltime="12:00", mem="24", name="sn.br", threads="4"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
         "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
         " -T BaseRecalibrator "
@@ -289,7 +293,7 @@ rule printreads:
     params:
         walltime="12:00", mem="24", name="sn.pr", threads="4"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
         "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
         " -T PrintReads "

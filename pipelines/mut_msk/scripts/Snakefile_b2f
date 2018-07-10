@@ -1,6 +1,6 @@
 # Levi Mangarin 2018 Wolchok Lab
 # lvmp mut_msk Snakefile_prepro
-## Analysis pipeline for preprocessing bam with merged paired/single end reads
+## Analysis pipeline for preprocessing bam with merged paired reads
 
 ################################################################################
 # Samples
