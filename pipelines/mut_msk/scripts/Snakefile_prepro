@@ -98,7 +98,7 @@ rule bwa_mem:
     params:
         walltime="48:00", mem="24", name="sn.bwa_mem", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
         "readgroup=\"@RG\\tID:\"$(awk NR==4 {input.fastq}.rg.txt)\"\\tLB:\"$(awk NR==8 {input.fastq}.rg.txt)\"\\tPL:\"$(awk NR==2 {input.fastq}.rg.txt)\"\\tPU:\"$(awk NR==6 {input.fastq}.rg.txt)\"\\tSM:\"$(awk NR==7 {input.fastq}.rg.txt)\"\"; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
@@ -106,8 +106,8 @@ rule bwa_mem:
         "{input.R1} "
         "{input.R2} "
         "> {output}; "
-        #"gunzip {input.R1};"
-        #"gunzip {input.R2};"
+        "gzip {input.R1};"
+        "gzip {input.R2};"
 
 
 ################################################################################
@@ -131,7 +131,7 @@ rule merge_bam:
         walltime="12:00", mem="64", name="sn.merge", threads="1"
     run:
         inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
-        shell("module add singularity; "
+        shell("module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
         "MergeSamFiles "
@@ -146,7 +146,6 @@ rule merge_bam:
 
 #################################################################################
 # Sort and add Readgroups (performed in bwa step)
-
 rule sort:
     input:
          #bam=FILE + 'bam/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS #skip merge step if only one lane 
@@ -236,7 +235,7 @@ rule fixmateinfo_bam:
 rule markduplicates:
     input:
          bam = FILE + 'indelrealign/{sample}.sort.ir.bam', tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, refs=REFS
-         #bam = FILE + 'indelrealign/{sample}.sort.ir.fmi.bam', tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, refs=REFS
+         #bam = FILE + 'indelrealign/{sample}.sort.ir.fmi.bam', tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, refs=REFS #to include fmi step
     output:
          temp(FILE + 'markdup/{sample}.sort.ir.fmi.md.bam')
     params: 

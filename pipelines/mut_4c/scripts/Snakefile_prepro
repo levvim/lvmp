@@ -120,7 +120,7 @@ rule samtobam:
 
 rule merge_bam:
     input:
-        bam = expand(FILE + 'bam/{SAMPLE}.{RUN}.bam', SAMPLE=sample, RUN=RID), 
+        bam = expand(FILE + 'bam/{{sample}}.{RUN}.bam', RUN=RID), 
         tmpdir = FILE + "tmp/", file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS
     output:
          temp(FILE + 'merge/{sample}.bam')

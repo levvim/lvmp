@@ -1,5 +1,6 @@
 #levi mangarin wolchok lab 2016
-# lvmp hla
+# lvmp hla specific to downloading files from SRA
+# first generate all fastq files, then optitype
 
 ################################################################################
 # Samples
@@ -32,27 +33,28 @@ OPTITYPE_REF= os.path.join(REFS + "optitype_hla_reference_dna.fasta")
 # Containers
 CONTAINERS=config["containers"]
 PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
-OPTITYPE=os.path.join(CONTAINERS + "optitype-release-v1.3.1.simg")
+OPTITYPE=os.path.join(CONTAINERS + "optitype-writable.simg")
 
 ################################################################################
 rule all:
     input: expand(FILE + "optitype/{SAMPLE}/{SAMPLE}.tsv", SAMPLE = sample)
+    #input: expand(FILE + "fastq/{SAMPLE}.fastq", SAMPLE = sample)
 
 ################################################################################
-rule dl_sam:
-    input:
-        file=FILE, prepro=PREPRO
-    output:
-        sam=temp(FILE + 'sam/{sample}.sam'),
-    params:
-        walltime="24:00", mem="4", name="sn.sra", threads="1", SID='{sample}'
-    shell:
-        "module add singularity; "
-        "cd {input.file}/sam; "
-        "/data/wolchok/david/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/vdb-config --import /data/wolchok/david/compass/prj_16485.ngc . ; "
-        "/data/wolchok/david/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/sam-dump.2.9.0 -s {params.SID} "
-        "--aligned-region 6:28510120-33480577 "
-        "> {output} "
+#rule dl_sam:
+#    input:
+#        file=FILE, prepro=PREPRO
+#    output:
+#        sam=temp(FILE + 'sam/{sample}.sam'),
+#    params:
+#        walltime="4:00", mem="4", name="sn.sra", threads="1", SID='{sample}'
+#    shell:
+#        "module add singularity; "
+#        "cd {input.file}sam; "
+#        "{input.file}/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/vdb-config --import {input.file}/compass/prj_16485.ngc . ; "
+#        "{input.file}/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/sam-dump.2.9.0 -s {params.SID} "
+#        "--aligned-region 6:28510120-33480577 "
+#        "> {output} "
 
 rule bamtofastq:
     input:
@@ -60,7 +62,7 @@ rule bamtofastq:
     output:
         L1 = FILE + 'fastq/{sample}.fastq'
     params:
-        walltime="24:00", mem="48", name="sn.b2f", threads="1"
+        walltime="12:00", mem="24", name="sn.b2f", threads="1"
     shell:
         "module add singularity; "
         "cd {input.file}; "
@@ -77,20 +79,22 @@ rule bamtofastq:
 
 rule optitype:
     input:
-         L1 = FILE + 'fastq/{sample}.fastq', outdir=FILE + "optitype/", file=FILE, optitype=OPTITYPE
+         L1 = FILE + 'fastq/{sample}.fastq', outdir=FILE + 'optitype', file=FILE, optitype=OPTITYPE
     output:
          FILE + 'optitype/{sample}/{sample}.tsv'
     params:
-        walltime="24:00", mem="32", name="sn.opti", threads="1"
+        walltime="12:00", mem="32", name="sn.opti", threads="1"
     shell:
         "module add singularity; "
         "SAMPLE={input.L1};  "
-        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "SAMPLE=${{SAMPLE%%.*}}; "
+        "SAMPLE=${{SAMPLE##*/}}; "
         "singularity exec --bind {input.file}:{input.file} {input.optitype} "
-        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} --dna -v --outdir {input.outdir}/\"$SAMPLE\";"
-        "rm {input.L1}; "
-        "touch {output};"
+        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} --dna -v --outdir {input.outdir}/\"$SAMPLE\"; "
+        "touch {output}; " 
+
+#        "&& cd {input.outdir}/\"$SAMPLE\" "
+#        "&& cp \"$(find -name \"\*result\*\" | head -n 1 )\" {output}; "
 
 ################################################################################
 ################################################################################

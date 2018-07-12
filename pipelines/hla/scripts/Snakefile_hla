@@ -1,5 +1,5 @@
 #levi mangarin wolchok lab 2016
-# lvmp hla
+# lvmp hla: class I typing from fastq
 
 ################################################################################
 # Samples
@@ -42,14 +42,14 @@ rule all:
 ################################################################################
 rule cat_fastq:
     input:
-        fastq1 = expand(FILE + 'fastq/{SAMPLE}.{RUN}.01.fastq', SAMPLE=sample, RUN=RID),
-        fastq2 = expand(FILE + 'fastq/{SAMPLE}.{RUN}.02.fastq', SAMPLE=sample, RUN=RID),
+        fastq1 = expand(FILE + 'fastq/{{sample}}.{RUN}.01.fastq', RUN=RID),
+        fastq2 = expand(FILE + 'fastq/{{sample}}.{RUN}.02.fastq', RUN=RID),
         prepro=PREPRO, file=FILE
     output:
-        fastq1=FILE + 'fastq/{sample}.cat.01.fastq',
-        fastq2=FILE + 'fastq/{sample}.cat.02.fastq'
+        fastq1=temp(FILE + 'fastq/{sample}.cat.01.fastq'),
+        fastq2=temp(FILE + 'fastq/{sample}.cat.02.fastq')
     params:
-        walltime="24:00", mem="4", name="sn.opti", threads="1"
+        walltime="24:00", mem="4", name="sn.cat", threads="1"
     run:
         inputstr1 = " ".join([" {} ".format(x) for x in input.fastq1])
         inputstr2 = " ".join([" {} ".format(x) for x in input.fastq2])
@@ -61,7 +61,7 @@ rule cat_fastq:
 
 rule optitype:
     input:
-         L1 = FILE + 'fastq/{sample}.cat.01.fastq', L2=FILE + 'fastq/{sample}.cat.02.fastq', outdir=FILE + "optitype/", file=FILE, optitype=OPTITYPE
+         L1 = FILE + 'fastq/{sample}.cat.01.fastq', L2=FILE + 'fastq/{sample}.cat.02.fastq', outdir=FILE + "optitype/", file=FILE, prepro=PREPRO, optitype=OPTITYPE, scripts=SCRIPTS
     output:
          FILE + 'optitype/{sample}/{sample}.tsv'
     params:
@@ -69,13 +69,15 @@ rule optitype:
     shell:
         "module add singularity; "
         "SAMPLE={input.L1};  "
-        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "SAMPLE=${{SAMPLE%%.*}}; "
+        "SAMPLE=${{SAMPLE##*/}}; "
         "singularity exec --bind {input.file}:{input.file} {input.optitype} "
-        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} {input.L2} --dna -v --outdir {input.outdir}/\"$SAMPLE\";"
-        "rm {input.L1}; "
-        "rm {input.L2}; "
-        "touch {output};"
+        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} {input.L2} --dna -v --outdir {input.outdir}/\"$SAMPLE\"; "
+        "cd {input.outdir}/\"$SAMPLE\; "
+        "cp $(find -name \"*result*\" | head -n 1) {output}.optitype; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "{input.scripts}/optitype_format -i {output}.optitype -o {output}; "
+
 
 ################################################################################
 ################################################################################
