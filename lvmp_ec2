@@ -1,0 +1,104 @@
+# levim wolchok lab 2018
+# lvmp dependency setup for ec2
+# curl https://raw.githubusercontent.com/levvim/lvmp/master/lvmp_ec2; chmod u+x lvmp_ec2; ./lvmp_ec2 --
+################################################################################
+# Project Config
+
+#getopts for argument input
+usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-k "SDWRKDSFJKCKESDFKJCK" \n\t-s "123kjdkfdaSDKsfkslfLK12KJDckjsdkj324kjHS" \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } [ $# -eq 0 ] && usage
+while getopts ":h:k:s:" arg; do
+    case $arg in
+        u) #User id (usually ec2-user)
+            USER=${OPTARG}
+            ;;
+        k) #AWS key
+            AWSKEY=${OPTARG}
+            ;;
+        s) #AWS Secret key
+            SECRETKEY=${OPTARG}
+            ;;
+        h | *) # Display help.
+            usage
+            exit 0
+            ;;
+    esac
+done
+
+################################################################################
+# Update system and install pipeline program dependencies
+
+sudo yum update -y
+sudo yum install docker -y
+sudo yum install squashfs-tools -y
+sudo yum install git python -y
+sudo yum update -y && \
+           sudo yum groupinstall 'Development Tools' -y && \
+           sudo yum install libarchive-devel -y
+
+## docker (post install instructions)
+sudo groupadd docker
+sudo usermod -aG docker $(whoami)
+sudo service docker startsudo service 
+
+## singularity
+git clone https://github.com/singularityware/singularity.git
+cd singularity
+./autogen.sh
+./configure --prefix=/usr/local
+make
+sudo make install
+##
+cd ..
+
+## snakemake
+wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+chmod u+x Miniconda3-latest-Linux-x86_64.sh
+yes yes | ./Miniconda3-latest-Linux-x86_64.sh
+yes y | miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
+
+SNAKEMAKE=miniconda3/bin/snakemake
+
+## project folders
+mkdir /home/"$USER"/PROJECT/
+mkdir /home/"$USER"/SCRIPTS/
+mkdir /home/"$USER"/CONTAINERS/
+mkdir /home/"$USER"/REFS/
+
+PROJECT="/home/$USER/PROJECT/"
+SCRIPTS="/home/$USER/SCRIPTS/"
+CONTAINERS="/home/$USER/CONTAINERS/"
+REFS="/home/$USER/REFS/"
+
+## vim
+rm -r ~/.vim
+git clone git://github.com/levvim/dotvim.git ~/.vim
+ln -s ~/.vim/vimrc ~/.vimrc 
+cd ~/.vim                                                                                          
+
+mkdir -p ~/.vim/autoload ~/.vim/bundle                                                             
+curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim                                
+                                                                                                   
+git clone https://github.com/scrooloose/nerdtree.git ~/.vim/bundle/nerdtree                        
+git clone https://github.com/vim-airline/vim-airline ~/.vim/bundle/vim-airline                     
+git clone https://github.com/vim-airline/vim-airline-themes ~/.vim/bundle/vim-airline-themes       
+git clone git://github.com/altercation/vim-colors-solarized.git ~/.vim/bundle/vim-colors-solarized 
+git clone https://github.com/tpope/vim-fugitive.git ~/.vim/bundle/vim-fugitive                     
+git clone git://github.com/ntpeters/vim-better-whitespace.git ~/.vim/bundle/vim-better-whitespace  
+
+git clone git://github.com/levvim/lvmp.git ~/lvmp
+################################################################################
+# Set aws key
+aws configure set aws_access_key_id $AWSKEY
+aws configure set aws_secret_access_key $SECRETKEY
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
