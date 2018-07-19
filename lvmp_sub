@@ -6,7 +6,7 @@
 # Project Config
 
 #getopts for argument input
-usage() { echo -en "LVMP v1.1 Pipeline Submission \nExample: lvmp_sub \n\t-w /data/PROJECT1/ \n\t-s Snakefile_prepro \n\t-c \"sample1.N sample1.T sample2.N sample2.T\" \n\t-r \"R1 R2\"\n\t-n 8\n\t-m /home/miniconda3/bin/snakemake \nFlags:\n" && grep " .)\ #" $0; exit 0; }
+usage() { echo -en "LVMP Pipeline Submission \nExample: lvmp_sub \n\t-w /data/PROJECT1/ \n\t-f Snakefile_prepro \n\t-s \"sample1.N sample1.T sample2.N sample2.T\" \n\t-r \"R1 R2\"\n\t-n 8 \nFlags:\n" && grep " .)\ #" $0; exit 0; }
 [ $# -eq 0 ] && usage
 while getopts ":hw:f:s:r:n:" arg; do
     case $arg in
@@ -24,9 +24,6 @@ while getopts ":hw:f:s:r:n:" arg; do
             ;;
         n) #Number of simultaneous jobs
             NUM_JOBS=${OPTARG}
-            ;;
-        m) #Snakemake executable
-            SNAKEMAKE=${OPTARG}
             ;;
         h | *) # Display help.
             usage
@@ -54,13 +51,13 @@ for ((i=0;i<${#dirs[@]};++i)); do mkdir -p ${dirs[$i]}; done
 # Run
 
 # Dry run
-$SNAKEMAKE/snakemake \
+snakemake \
     -d $WORKDIR \
     --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID" \
     --snakefile $SNAKEFILE --dag | dot -Tpdf > "$SNAKEFILE"_dag.pdf
 
 # Cluster submission 
-$SNAKEMAKE/snakemake \
+snakemake \
     -d $WORKDIR \
     --latency-wait 120 \
     --jobs $NUM_JOBS \
