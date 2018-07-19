@@ -55,7 +55,7 @@ cd ..
 wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 chmod u+x Miniconda3-latest-Linux-x86_64.sh
 ./Miniconda3-latest-Linux-x86_64.sh
-yes y | miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
+yes y | ~/miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
 
 SNAKEMAKE=miniconda3/bin/snakemake
 
@@ -71,7 +71,7 @@ CONTAINERS="/home/$USER/CONTAINERS/"
 REFS="/home/$USER/REFS/"
 
 ## vim
-rm -r ~/.vim
+yes yes | rm -r ~/.vim
 git clone git://github.com/levvim/dotvim.git ~/.vim
 ln -s ~/.vim/vimrc ~/.vimrc 
 cd ~/.vim                                                                                          
