@@ -57,7 +57,7 @@ chmod u+x Miniconda3-latest-Linux-x86_64.sh
 ./Miniconda3-latest-Linux-x86_64.sh
 yes y | ~/miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
 
-SNAKEMAKE=miniconda3/bin/snakemake
+export PATH=$PATH:$HOME/miniconda3/bin
 
 ## project folders
 mkdir /home/"$USER"/PROJECT/
