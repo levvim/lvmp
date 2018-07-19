@@ -14,7 +14,7 @@ while getopts ":hw:f:s:r:n:" arg; do
             WORK_DIR=${OPTARG}
             ;;
         f) #Snakefile
-            REF=${OPTARG}
+            SNAKEFILE=${OPTARG}
             ;;
         s) #Samples (Space separated string)
             SAMPLES=${OPTARG}
@@ -54,7 +54,7 @@ for ((i=0;i<${#dirs[@]};++i)); do mkdir -p ${dirs[$i]}; done
 snakemake \
     -d $WORKDIR \
     --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID" \
-    --snakefile $SNAKEFILE --dag | dot -Tpdf > "$SNAKEFILE"_dag.pdf
+    --snakefile $SNAKEFILE --dag | dot -Tjpeg > "$SNAKEFILE"_dag.pdf
 
 # Cluster submission 
 snakemake \
