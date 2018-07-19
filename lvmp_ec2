@@ -7,7 +7,7 @@
 #getopts for argument input
 usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-k "SDWRKDSFJKCKESDFKJCK" \n\t-s "123kjdkfdaSDKsfkslfLK12KJDckjsdkj324kjHS" \n\nFlags:\n" && grep " .)\ #" $0; exit 0; }
 [ $# -eq 0 ] && usage
-while getopts ":h:k:s:" arg; do
+while getopts ":hu:k:s:" arg; do
     case $arg in
         u) #User id (usually ec2-user)
             USER=${OPTARG}
