@@ -5,9 +5,8 @@
 # Project Config
 
 #getopts for argument input
-usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-k "SDWRKDSFJKCKESDFKJCK" \n\t-s "123kjdkfdaSDKsfkslfLK12KJDckjsdkj324kjHS" \n\nFlags:\n" && grep " .)\ #" $0; exit 0; }
-[ $# -eq 0 ] && usage
-while getopts ":hu:k:s:" arg; do
+usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-k "SDWRKDSFJKCKESDFKJCK" \n\t-s "123kjdkfdaSDKsfkslfLK12KJDckjsdkj324kjHS" \n\t-c ["picard/picard:latest","levim/dsprepro:1.1"] \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } [ $# -eq 0 ] && usage
+while getopts ":h:k:s:c:" arg; do
     case $arg in
         u) #User id (usually ec2-user)
             USER=${OPTARG}
@@ -17,6 +16,11 @@ while getopts ":hu:k:s:" arg; do
             ;;
         s) #AWS Secret key
             SECRETKEY=${OPTARG}
+            ;;
+        c) #array of container IDs
+            set -f # disable glob
+            IFS=' ' # split on space characters
+            CONTAINERID=($OPTARG)
             ;;
         h | *) # Display help.
             usage
@@ -55,9 +59,9 @@ cd ..
 wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 chmod u+x Miniconda3-latest-Linux-x86_64.sh
 ./Miniconda3-latest-Linux-x86_64.sh
-yes y | ~/miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
+yes y | miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
 
-export PATH=$PATH:$HOME/miniconda3/bin
+SNAKEMAKE=miniconda3/bin/snakemake
 
 ## project folders
 mkdir /home/"$USER"/PROJECT/
@@ -71,14 +75,13 @@ CONTAINERS="/home/$USER/CONTAINERS/"
 REFS="/home/$USER/REFS/"
 
 ## vim
-yes yes | rm -r ~/.vim
+rm -r ~/.vim
 git clone git://github.com/levvim/dotvim.git ~/.vim
 ln -s ~/.vim/vimrc ~/.vimrc 
-cd ~/.vim                                                                                          
+cd ~/.vim
 
-mkdir -p ~/.vim/autoload ~/.vim/bundle                                                             
-curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim                                
-                                                                                                   
+mkdir -p ~/.vim/autoload ~/.vim/bundle
+curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
 git clone https://github.com/scrooloose/nerdtree.git ~/.vim/bundle/nerdtree                        
 git clone https://github.com/vim-airline/vim-airline ~/.vim/bundle/vim-airline                     
 git clone https://github.com/vim-airline/vim-airline-themes ~/.vim/bundle/vim-airline-themes       
@@ -86,12 +89,19 @@ git clone git://github.com/altercation/vim-colors-solarized.git ~/.vim/bundle/vi
 git clone https://github.com/tpope/vim-fugitive.git ~/.vim/bundle/vim-fugitive                     
 git clone git://github.com/ntpeters/vim-better-whitespace.git ~/.vim/bundle/vim-better-whitespace  
 
+## lvmp
 git clone git://github.com/levvim/lvmp.git ~/lvmp
 ################################################################################
 # Set aws key
 aws configure set aws_access_key_id $AWSKEY
 aws configure set aws_secret_access_key $SECRETKEY
 
+################################################################################
+# Install Containers
+# cd $CONTAINERS
+for ((i=0;i<${#CONTAINERID[@]};++i)); do
+    singularity pull docker://"${CONTAINERID[$i]}";
+done
 
 ################################################################################
 ################################################################################
