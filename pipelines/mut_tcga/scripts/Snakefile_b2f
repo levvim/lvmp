@@ -1,0 +1,87 @@
+# Levi Mangarin 2018 Wolchok Lab
+# lvmp mut_msk Snakefile_prepro
+## Analysis pipeline for preprocessing bam with merged paired reads
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+HAPMAP= os.path.join(REFS + "hapmap_3.3.b37.vcf")
+OMNI= os.path.join(REFS + "1000G_omni2.5.b37.vcf")
+P1000G= os.path.join(REFS + "1000G_phase1.snps.high_confidence.b37.vcf")
+INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+BBB=os.path.join(CONTAINERS + "biobambam-latest.simg")
+
+#Illumina TruSeq adapters
+ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
+ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
+
+################################################################################
+rule all:
+    input: 
+        expand(FILE + 'fastq/{SAMPLE}.01.fastq', SAMPLE = sample) 
+
+################################################################################
+#Convert to fastq
+rule bamtofastq:
+    input:
+        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, bbb=BBB
+    output:
+        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
+
+    params:
+        walltime="08:00", mem="48", name="sn.b2f", threads="1"
+    shell:
+        "module add singularity/2.4.2; "
+        "cd {input.file}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools sort -O bam {input.bam} -o {input.bam}.sort;"
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools index {input.bam}.sort; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bbb} "
+        "bamtofastq "
+        "collate=1 "
+        "exclude=QCFAIL,SECONDARY,SUPPLEMENTARY "
+        "filename= {input.bam} "
+        "gz=1 "
+        "inputformat=bam"
+        "level=5 "
+        "outputdir= {output.file}/fastq/ "
+        "outputperreadgroup=1 "
+        "outputperreadgroupsuffixF=01.fastq.gz "
+        "outputperreadgroupsuffixF2=02.fastq.gz "
+        "outputperreadgroupsuffixO=_o1.fastq.gz "
+        "outputperreadgroupsuffixO2=_o2.fastq.gz "
+        "outputperreadgroupsuffixS=_s.fastq.gz "
+        "tryoq=1 "

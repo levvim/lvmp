@@ -1,0 +1,196 @@
+# Levi Mangarin 2017 wolchok lab
+## Mutational analysis pipeline for preprocessed fastq files, calibrated for b37 analysis
+
+#################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+#################################################################################
+# References
+
+FILE=config["file"]
+
+#refs for using grch37 hg19 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+# refs for using grch37 b37 (broad)
+REFS = os.path.join("/data/wolchok/PROJECT/refs/GRCh37hg19/")
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+DSNP132 = os.path.join(REFS + "dbsnp_132_b37.leftAligned.vcf")
+#COSMIC = os.path.join(REFS + "b37_cosmic_v54_120711.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts_b37.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
+REGION_b37="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y MT".split()
+region=REGION_b37
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+GATK=os.path.join(CONTAINERS + "mutect-1.1.7.simg")
+BCFTOOLS=os.path.join(CONTAINERS + "bcftools-1.3.1.simg")
+VEP_SAMTOOLS=os.path.join(CONTAINERS + "vep_samtools-1.0.simg")
+
+
+#################################################################################
+rule all:
+    input: 
+        #expand(FILE + 'HC/{SAMPLE}.maf', SAMPLE=sample),
+        #expand(FILE + 'muTect/{SAMPLE}.merge.vcf', SAMPLE=sample),
+        #expand(FILE + 'muTect/{SAMPLE}.maf', SAMPLE=sample),
+        expand(FILE + 'muTect/{SAMPLE}.merge.vep.maf', SAMPLE=sample)
+ 
+#################################################################################
+# Mutation calling
+#rule muTect_merge:
+#    input:
+#        vcf=FILE + 'muTect/{sample}.1.T.vcf',cs=FILE + 'muTect/{sample}.1.T.call_stats.out', file=FILE, scripts=SCRIPTS, bcftools=BCFTOOLS
+#    output:
+#         FILE + 'muTect/{sample}.merge.vcf', cs=FILE + 'muTect/{sample}.call_stats.merge.out', pair=FILE + 'muTect/{sample}.vcf.pair'
+#    threads: 1
+#    params:
+#         walltime="24:00", mem="4", name="sn.mt_m", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "cd {input.file}muTect; "
+#        "SAMPLE={input.vcf}; "
+#        "SAMPLE=${{SAMPLE%%.*}}; "
+#        "SAMPLE=${{SAMPLE##*/}}; "
+#        #"for i in \"$SAMPLE\".*.vcf; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools view $i -Oz -o $i.gz; done; " #convert per chromosome vcfs to vcf.gz
+#        "for i in \"$SAMPLE\".*.vcf; do echo $i; ~/programs/bcftools/bcftools view $i -Oz -o $i.gz; done; " #convert per chromosome vcfs to vcf.gz
+#        #"for i in \"$SAMPLE\".*.vcf.gz; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools index $i; done; " #index gzipped vcfs
+#        "for i in \"$SAMPLE\".*.vcf.gz; do echo $i; ~/programs/bcftools/bcftools index $i; done; " #index gzipped vcfs
+#        #"singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools concat \"$SAMPLE\".*.vcf.gz > \"$SAMPLE\".merged.vcf; " #merge vcf files
+#        "~/programs/bcftools/bcftools concat \"$SAMPLE\".*.vcf.gz > \"$SAMPLE\".merged.vcf; " #merge vcf files
+#        #"singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools sort \"$SAMPLE\".merged.vcf -o \"$SAMPLE\".merge.vcf; " #sort vcf files
+#        "~/programs/bcftools/bcftools sort \"$SAMPLE\".merged.vcf -o \"$SAMPLE\".merge.vcf; " #sort vcf files
+#        #"rm {SAMPLE}.merged.vcf; "
+#        "awk \"NR < 3 {{ print }}\" {input.cs} > {output.cs}; " #create header for merging call_stats files
+#        "for i in \"$SAMPLE\".*.call_stats.out; do echo $i; awk 'NR > 2 {{ print }} ' $i >> {output.cs}; done; " #concatenate call_stats files
+#        "i=\"$(grep \"CHROM\" {input.vcf} | sed -e \"y/\\t/\\n/\" | grep \"\\.N\\.\")\"; " #create pairing file, cut normal ID
+#        "j=\"$(grep \"CHROM\" {input.vcf} | sed -e \"y/\\t/\\n/\" | grep \"\\.T\\.\")\"; " #create pairing file, cut normal ID
+#        "echo -e \"\"$i\"\\t\"$j\"\" > {output.pair}; "
+
+#rule muTect_filter:
+#    input:
+#        mt= FILE + 'muTect/{sample}.merge.vcf', cs=FILE + 'muTect/{sample}.call_stats.merge.out', pair=FILE + 'muTect/{sample}.vcf.pair', file=FILE, scripts=SCRIPTS, prepro=PREPRO
+#    output:
+#         FILE + 'muTect/{sample}.maf'
+#    threads: 1
+#    params:
+#         walltime="08:00", mem="4", name="sn.mtf", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "python {input.scripts}/BIC/vcf2maf0.py  "
+#        "   -i {input.mt}  "
+#        "   -aF {input.cs}  "
+#        "   -t \"$(cut -f2 {input.pair})\" "
+#        "   -n \"$(cut -f1 {input.pair})\"  "
+#        "   -c mutect  "
+#        "   -o {output}0  "
+#        "   -p {input.pair}; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "python {input.scripts}/BIC/DMP_rescue.py  "
+#        "   < {output}0 "
+#        "   > {output}1 "
+#        "   2> {output}1.log; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "python {input.scripts}/BIC/oldMAF2tcgaMAF.py  "
+#        "   b37  "
+#        "   {output}1 "
+#        "   {output}2; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "awk -F\"\\t\" 'NR==1  {{print $0}}' {output}1 > {output}; "
+#        "grep \"PASS\" {output}1 >> {output}; "
+#
+#rule HaplotypeCaller_filter:
+#    input:
+#         hc = FILE + 'HC/{sample}.T.vcf', file=FILE, scripts=SCRIPTS,prepro=PREPRO
+#    output:
+#         FILE + 'HC/{sample}.maf'
+#    threads: 1
+#    params:
+#         walltime="4:00", mem="4", name="sn.HCf", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "cd {input.file}HC; "
+#        "i=\"$(grep \"CHROM\" {input.hc} | cut -f10)\"; "
+#        "j=\"$(grep \"CHROM\" {input.hc} | cut -f11)\"; "
+#        "echo -e \"\"$i\"\\t\"$j\"\" > {input.hc}.pair; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "python {input.scripts}/BIC/vcf2maf0.py  "
+#        "   -i {input.hc} "
+#        "   -c haplotypecaller  "
+#        "   -o {output}0 "
+#        "   -p {input.hc}.pair; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "python {input.scripts}/BIC/pA_qSomHC.py  "
+#        "   < {output}0 "
+#        "   > {output}1; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+#        "python {input.scripts}/BIC/indelOnly.py  "
+#        "   < {output}1 "
+#        "   > {output}; "
+#
+#rule merge_filter:
+#    input:
+#         hc = FILE + 'HC/{sample}.maf', mt = FILE + 'muTect/{sample}.maf', ref=REF
+#    output:
+#         FILE + 'muTect/{sample}.merge.maf'
+#    threads: 1
+#    params:
+#         walltime="1:00", mem="2", name="sn.hcmt", threads="1"
+#    shell:
+#        "cut -f-39 {input.hc} > {output};  "
+#        "tail -n +2 {input.mt} >> {output} "
+
+rule merge_vep:
+    input:
+         #maf=FILE + 'muTect/{sample}.merge.maf', ref=REF, file=FILE, scripts=SCRIPTS, vep_samtools=VEP_SAMTOOLS, refs=REFS
+         maf=FILE + 'muTect/{sample}.maf', ref=REF, file=FILE, scripts=SCRIPTS, vep_samtools=VEP_SAMTOOLS, refs=REFS
+    output:
+         FILE + 'muTect/{sample}.merge.vep.maf'
+    threads: 1
+    params:
+         walltime="24:00", mem="64", name="sn.vep", threads="1"
+    shell:
+        "module add singularity; "
+        "test=\"\"{input.file}\"fastq/\"; " #remove folder positions from vcf header
+        "test=\"${{test//\//\\/}}\"; "
+        "sed -e \"s/$test//g\" < {input.maf} > {input.maf}.id; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.vep_samtools} perl {input.scripts}/BIC/maf2maf.pl "
+        "--tmp-dir {input.file}tmp "
+        "--ref-fasta {input.ref} "
+        "--ncbi-build GRCh37 "
+        "-vep-forks 4  " "--vep-path /opt/vep/src/ensembl-vep/  "
+        "--vep-data {input.refs}  "
+        "--retain-cols \"Center,Verification_Status,Validation_Status,Mutation_Status,Sequencing_Phase,Sequence_Source,Validation_Method,Score,BAM_file,Sequencer,Tumor_Sample_UUID,Matched_Norm_Sample_UUID,Caller\"   "
+        "--input-maf {input.maf}.id  "
+        "--output-maf {output} > {output}.log  "
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################

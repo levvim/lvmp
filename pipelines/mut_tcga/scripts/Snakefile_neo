@@ -1,0 +1,168 @@
+# Levi Mangarin 2018 Wolchok Lab
+# lvmp mut_msk Snakefile_prepro
+## Analysis pipeline for preprocessing fastq files, calibrated for GRCh37 analysis
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+HAPMAP= os.path.join(REFS + "hapmap_3.3.b37.vcf")
+OMNI= os.path.join(REFS + "1000G_omni2.5.b37.vcf")
+P1000G= os.path.join(REFS + "1000G_phase1.snps.high_confidence.b37.vcf")
+INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+SNPEFF=os.path.join(CONTAINERS + "snpeff-3.6.simg")
+
+#Illumina TruSeq adapters
+ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
+ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
+
+################################################################################
+rule all:
+    input: 
+        #expand(FILE + 'neoantigen/{SAMPLE}.pan', SAMPLE = sample)
+        expand(FILE + 'neoantigen/{SAMPLE}.tumor.pan', SAMPLE = sample)
+
+################################################################################
+rule snpeff_muTect:
+    input:
+         tumor = FILE + 'muTect/{sample}.merge.vcf', file = FILE, snpeff=SNPEFF, refs=REFS, scripts=SCRIPTS
+    output:
+         vcf=FILE + 'muTect/{sample}.vcf.neo.ann'
+
+    threads: 1
+    params:
+         walltime="01:00", mem="8", name="sn.snpeff.mt", threads="1"
+    shell:
+        "module add singularity/2.4.2; "
+        "TUMOR={input.tumor}; "
+        "TUMOR=${{TUMOR%%.*}}; "
+        "TUMOR=${{TUMOR##*/}}; "
+        "cd {input.file}muTect; "
+        "grep \"PASS\|ALT\" {input.tumor} > \"$TUMOR\".vcf.pass;"
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
+        "java -Xmx{params.mem}G -jar /opt/pimmuno/snpeff/snpEff.jar eff -a 13 -c ~/programs/snpEff-3.6/snpEff.config "
+        "   -noStats -hgvs -canon -o txt -v \"GRCh37.75\" \"$TUMOR\".vcf.pass > \"$TUMOR\".vcf.pass2; "
+        "   cat \"$TUMOR\".vcf.pass2 | perl {input.scripts}/vcfEffOnePerLine.pl  > {output.vcf} "
+        #"java -Xmx{params.mem}G -jar /opt/pimmuno/snpeff/snpEff.jar eff -a 13 -c /opt/pimmuno/snpeff/snpEff.config "
+
+rule antigen_call:
+    input: 
+        vcf=FILE + 'muTect/{sample}.vcf.neo.ann', hla=FILE + 'optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
+    output: 
+        normal = FILE + 'neoantigen/{sample}.normal.pep',
+        tumor = FILE + 'neoantigen/{sample}.tumor.pep',
+        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep',
+        kmer=FILE + 'neoantigen/{sample}.kmer'
+    params:
+        walltime="2:00", mem="4", name="sn.acall", threads="1"
+    shell:
+        "module add singularity/2.4.2; "
+        "TUMOR={input.vcf}; "
+        "TUMOR=${{TUMOR%%.*}}; "
+        "TUMOR=${{TUMOR##*/}}; "
+        "cd {input.file}/neoantigen; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "cut -f23 {input.vcf} > {output.kmer}; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "cut -f1,2,11 {input.vcf} > \"$TUMOR\".rnafilter; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "{input.scripts}/antigen_call_i -w {input.file} -t {output.kmer}; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".normal.join.pep > {output.normal}; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".tumor.join.pep > {output.tumor}; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".rnafilter.join.pep > {output.rnafilter};"
+
+rule nmp:
+    input: 
+        normal = FILE + 'neoantigen/{sample}.normal.pep',
+        tumor = FILE + 'neoantigen/{sample}.tumor.pep',
+        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep',
+        hla= FILE + 'optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
+    output: 
+        normal = FILE + 'neoantigen/{sample}.normal.pan',
+        tumor = FILE + 'neoantigen/{sample}.tumor.pan',
+    params:
+        walltime="12:00", mem="8", name="sn.nmp", threads="1"
+    shell:
+        "module add singularity/2.4.2; "
+        "SAMPLE={input.tumor}; "
+        "SAMPLE=${{SAMPLE%%.*}}; "
+        "SAMPLE=${{SAMPLE##*/}}; "
+        "cd {input.file}/neoantigen; "
+        "touch {output.normal}; touch {output.tumor}; "
+        "cat {input.hla} | while read -r line; do "
+        "       $HOME/programs/netMHCpan-3.0/netMHCpan -inptype 1 -a \"$line\" -s -v -l 9,10,11,12,13 "
+        "       -xls -xlsfile \"$SAMPLE\".normal.\"$line\".xls -f {input.normal} >> {output.normal}; "
+        "       $HOME/programs/netMHCpan-3.0/netMHCpan -inptype 1 -a \"$line\" -s -v -l 9,10,11,12,13 "
+        "       -xls -xlsfile \"$SAMPLE\".tumor.\"$line\".xls -f {input.tumor} >> {output.tumor}; "
+        "done"
+
+rule nmp_filter_noRNA:
+    input: 
+        normal = FILE + 'neoantigen/{sample}.normal.pan',
+        tumor = FILE + 'neoantigen/{sample}.tumor.pan',
+        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep',
+        rna= FILE + 'rna/{sample}.bam',
+        hla=FILE + 'optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
+    output: 
+        tumor = FILE + 'neoantigen/{sample}.pan',
+    params:
+        walltime="12:00", mem="8", name="sn.fastqc", threads="1"
+    shell:
+        "module add singularity; "
+        "SAMPLE={input.tumor}; "
+        "SAMPLE=${{SAMPLE%%.*}}; "
+        "SAMPLE=${{SAMPLE##*/}}; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "    {input.scripts}/neoantigen_filter_i "
+        "        -w {input.file}/neoantigen"
+        "        -f {input.scripts}/neoantigen_normalfilter.r"
+        "        -t \"$SAMPLE\ "
+        "        -i {input.hla} "
+        "        -o {output.tumor}; "
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
