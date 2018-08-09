@@ -45,39 +45,17 @@ GATK=os.path.join(CONTAINERS + "gatk-4.0.1.2.simg")
 MUTECT=os.path.join(CONTAINERS + "mutect-latest.simg")
 BCFTOOLS=os.path.join(CONTAINERS + "bcftools-1.3.1.simg")
 MUSE=os.path.join(CONTAINERS + "muse-v0.1.1.simg")
+VARSCAN=os.path.join(CONTAINERS + "varscan-latest.simg")
 
 #################################################################################
 rule all:
     input: 
-        expand(FILE + 'muTect/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region)
-        #expand(FILE + 'muTect/{sample}.vcf', SAMPLE=sample),
-        #expand(FILE + 'HC/{SAMPLE}.T.vcf', SAMPLE=sample)
+        expand(FILE + 'muse/{SAMPLE}.T.vcf', SAMPLE=sample),
+        expand(FILE + 'muTect2/{SAMPLE}.T.vcf', SAMPLE=sample),
+        expand(FILE + 'somaticsniper/{SAMPLE}.T.vcf', SAMPLE=sample),
+        expand(FILE + 'varscan2/{SAMPLE}.T.vcf', SAMPLE=sample)
 
 #################################################################################
-#rule readgroups_bam:
-#    input:
-#        fastqrg = FILE + 'fastq/{sample}.L1.01.fastq.rg.txt', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD, scripts=SCRIPTS
-#    output:
-#        FILE + "bqsr/{sample}.pp.rg.bam"
-#    threads: 1
-#    params:
-#        walltime="06:00", mem="16", name="sn.rg", threads="1"
-#    shell:
-#        "module add singularity/2.4.2; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-#        "bash -c \"java -Xmx{params.mem}g -jar /usr/picard/picard.jar AddOrReplaceReadGroups "
-#        "I={input.bam} "
-#        "O={output} "
-#        "TMP_DIR={input.tmpdir} "
-#        "RGID=$(awk \"NR==4\" {input.fastqrg}) "
-#        "RGLB=$(awk \"NR==8\" {input.fastqrg}) "
-#        "RGPL=$(awk \"NR==2\" {input.fastqrg}) "
-#        "RGPU=$(awk \"NR==6\" {input.fastqrg}) "
-#        "RGSM=$(awk \"NR==7\" {input.fastqrg}) \"; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-#        "samtools index {output} "
-
-################################################################################
 # Mutation calling
 rule MuSE:
     input:

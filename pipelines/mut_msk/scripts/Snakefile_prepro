@@ -49,8 +49,8 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 ################################################################################
 rule all:
     input: 
-        expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample) #fastq to preprocessed bam
         #expand(FILE + 'fastqc/{SAMPLE}_fastqc.html', SAMPLE = sample) #fastqc
+        expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample) #fastq to preprocessed bam
 
 ################################################################################
 #QC and prep 
@@ -67,6 +67,19 @@ rule FastQC:
 
 ################################################################################
 # Trim
+rule gunzip:
+    input: 
+        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
+        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
+    output: 
+        fastq1=temp(FILE + 'fastq/{sample}.01.fastq'), 
+        fastq2=temp(FILE + 'fastq/{sample}.02.fastq')
+    params:
+        walltime="16:00", mem="4", name="sn.gz", threads="1"
+    shell:
+        "gunzip {input.fastq1};"
+        "gunzip {input.fastq2};"
+
 rule cutadapt:
     input: 
         fastq1=FILE + 'fastq/{sample}.01.fastq', 
@@ -74,7 +87,7 @@ rule cutadapt:
         file=FILE, cutadapt=CUTADAPT, refs=REFS
     output: 
         fastq1=temp(FILE + 'fastq/{sample}.01.trim.fastq'),
-        fastq2=temp(FILE + 'fastq/{sample}.02.trim.fastq')
+        fastq2=temp(FILE + 'fastq/{sample}.02.trim.fastq'),
     params:
         walltime="12:00", mem="16", name="sn.cutadapt", adapter_r1=ADAPTER_R1, adapter_r2=ADAPTER_R2, threads="1"
     shell:
@@ -86,7 +99,7 @@ rule cutadapt:
         "--minimum-length 20 "
         "--quality-cutoff 3 "
         "{input.fastq1} {input.fastq2}; "
-        
+       
 ################################################################################
 # Align
 rule bwa_mem:
@@ -96,7 +109,7 @@ rule bwa_mem:
         scripts = SCRIPTS, ref = REF, file = FILE, prepro=PREPRO, refs=REFS
     output: temp(FILE + 'sam/{sample}.sam')
     params:
-        walltime="48:00", mem="24", name="sn.bwa_mem", threads="1"
+        walltime="48:00", mem="24", name="sn.bwa_mem", threads="8"
     shell:
         "module add singularity/2.4.2; "
         "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
@@ -106,16 +119,14 @@ rule bwa_mem:
         "{input.R1} "
         "{input.R2} "
         "> {output}; "
-        "gzip {input.R1};"
-        "gzip {input.R2};"
 
 
-################################################################################
+#################################################################################
 rule samtobam:
     input: sam=FILE + 'sam/{sample}.sam', file=FILE, prepro=PREPRO, refs=REFS
     output: temp(FILE + 'bam/{sample}.bam')
     params:
-        walltime="96:00", mem="24", name="sn.s2b", threads="1"
+        walltime="24:00", mem="24", name="sn.s2b", threads="1"
     shell:
         "module add singularity/2.4.2; "
         "singularity exec --bind {input.refs}:{input.refs} --bind {input.file}:{input.file} {input.prepro} "
@@ -148,12 +159,12 @@ rule merge_bam:
 # Sort and add Readgroups (performed in bwa step)
 rule sort:
     input:
-         #bam=FILE + 'bam/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS #skip merge step if only one lane 
-         bam=FILE + 'merge/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS
+         bam=FILE + 'bam/{sample}.L1.bam', file=FILE, prepro=PREPRO, refs=REFS #skip merge step if only one lane 
+         #bam=FILE + 'merge/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS
     output:
          FILE + 'sort/{sample}.sort.bam'
     params:
-        walltime="96:00", mem="32", name="sn.sort", threads="1"
+        walltime="24:00", mem="32", name="sn.sort", threads="1"
     shell:
         "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
@@ -163,7 +174,7 @@ rule sort:
         "samtools index {output} "
 
 ##################################################################################
-#Indel Realignment, Base Square Recalibration, MarkDuplicates
+# Indel Realignment, Base Square Recalibration, MarkDuplicates
 rule index_and_realign_info:
     input:
         bam = FILE + 'sort/{sample}.sort.bam', ref = REF, dbsnp = DBSNP138e, gold=GOLD_INDELS, file=FILE, gatk=GATK, refs=REFS

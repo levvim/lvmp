@@ -41,37 +41,39 @@ CONTAINERS=config["containers"]
 PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
 CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
 PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
-GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+GATK=os.path.join(CONTAINERS + "gatk-4.0.1.2.simg")
 MUTECT=os.path.join(CONTAINERS + "mutect-latest.simg")
+BCFTOOLS=os.path.join(CONTAINERS + "bcftools-1.3.1.simg")
+#GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
 
 #################################################################################
 rule all:
     input: 
-        expand(FILE + 'muTect/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region),
-        expand(FILE + 'HC/{SAMPLE}.T.vcf', SAMPLE=sample)
+        expand(FILE + 'muTect/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region)
+        #expand(FILE + 'muTect/{sample}.vcf', SAMPLE=sample),
+        #expand(FILE + 'HC/{SAMPLE}.T.vcf', SAMPLE=sample)
 
 #################################################################################
 rule readgroups_bam:
     input:
-        fastq = FILE + 'fastq/{sample}.L1.01.fastq', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD
+        fastqrg = FILE + 'fastq/{sample}.L1.01.fastq.rg.txt', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD, scripts=SCRIPTS
     output:
         FILE + "bqsr/{sample}.pp.rg.bam"
     threads: 1
     params:
         walltime="06:00", mem="16", name="sn.rg", threads="1"
     shell:
-        "module add singularity; "
-        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
+        "module add singularity/2.4.2; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "bash -c \"java -Xmx{params.mem}g -jar /usr/picard/picard.jar AddOrReplaceReadGroups "
         "I={input.bam} "
         "O={output} "
         "TMP_DIR={input.tmpdir} "
-        "RGID=$(awk \"NR==4\" {input.fastq}.rg.txt) "
-        "RGLB=$(awk \"NR==8\" {input.fastq}.rg.txt) "
-        "RGPL=$(awk \"NR==2\" {input.fastq}.rg.txt) "
-        "RGPU=$(awk \"NR==6\" {input.fastq}.rg.txt) "
-        "RGSM=$(awk \"NR==7\" {input.fastq}.rg.txt) \"; "
+        "RGID=$(awk \"NR==4\" {input.fastqrg}) "
+        "RGLB=$(awk \"NR==8\" {input.fastqrg}) "
+        "RGPL=$(awk \"NR==2\" {input.fastqrg}) "
+        "RGPU=$(awk \"NR==6\" {input.fastqrg}) "
+        "RGSM=$(awk \"NR==7\" {input.fastqrg}) \"; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
         "samtools index {output} "
 
@@ -79,22 +81,21 @@ rule readgroups_bam:
 # Mutation calling
 rule HaplotypeCaller:
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138 = DBSNP138e, dbsnp132 = DBSNP132, gatk=GATK 
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138 = DBSNP138e, dbsnp132 = DBSNP132, gatk=GATK , refs=REFS
     output:
          FILE + 'HC/{sample}.T.vcf'
     threads: 1
     params:
          walltime="32:00", mem="32", name="sn.HC", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
         "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
         "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
-        "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
-        " -T HaplotypeCaller "
+        " gatk HaplotypeCaller"
         " -R {input.ref} "
         " -I {input.tumor} -I {input.normal} "
         " --dbsnp {input.dbsnp138} "
@@ -104,7 +105,35 @@ rule HaplotypeCaller:
         " --read_filter BadCigar "
         " --num_cpu_threads_per_data_thread {params.threads} "
         " -o {input.file}HC/\"$TUMOR_FIXED\".T.vcf; "
+        #"java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
+        #" -T HaplotypeCaller "
 
+#rule muTect_merge:
+#    input:
+#         vcf=expand(FILE + 'muTect/{{sample}}.{region}.T.vcf', region=REGION_b37), cs=FILE + 'muTect/{sample}.1.T.call_stats.out', file=FILE, scripts=SCRIPTS, bcftools=BCFTOOLS
+#    output:
+#         FILE + 'muTect/{sample}.vcf', cs=FILE + 'muTect/{sample}.call_stats.out', pair=FILE + 'muTect/{sample}.vcf.pair'
+#
+#    threads: 1
+#    params:
+#         walltime="24:00", mem="4", name="sn.mt_m", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "cd {input.file}muTect; "
+#        "SAMPLE={input.vcf}; "
+#        "SAMPLE=${{SAMPLE%%.*}}; "
+#        "SAMPLE=${{SAMPLE##*/}}; "
+#        "for i in \"$SAMPLE\".*.vcf; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools view $i -Oz -o $i.gz; done; " #convert per chromosome vcfs to vcf.gz
+#        "for i in \"$SAMPLE\".*.vcf.gz; do echo $i; singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools index $i; done; " #index gzipped vcfs
+#        "singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools concat \"$SAMPLE\".*.vcf.gz > \"$SAMPLE\".merged.vcf; " #merge vcf files
+#        "singularity exec --bind {input.file}:{input.file} {input.bcftools} bcftools sort \"$SAMPLE\".merged.vcf -o \"$SAMPLE\".merge.vcf; " #sort vcf files
+#        "rm {SAMPLE}.merged.vcf; "
+#        "awk \"NR < 3 {{ print }}\" {input.cs} > {output.cs}; " #create header for merging call_stats files
+#        "for i in \"$SAMPLE\".*.call_stats.out; do echo $i; awk 'NR > 2 {{ print }} ' $i >> {output.cs}; done; " #concatenate call_stats files
+#        "i=\"$(grep \"CHROM\" {input.vcf} | sed -e \"y/\\t/\\n/\" | grep \"\\.N\\.\")\"; " #create pairing file, cut normal ID
+#        "j=\"$(grep \"CHROM\" {input.vcf} | sed -e \"y/\\t/\\n/\" | grep \"\\.T\\.\")\"; " #create pairing file, cut normal ID
+#        "echo -e \"\"$i\"\\t\"$j\"\" > {output.pair}; "
+#
 ################################################################################
 ################################################################################
 rule muTect_1:
@@ -116,6 +145,7 @@ rule muTect_1:
     params:
          walltime="24:00", mem="32", name="sn.mt_1", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -146,6 +176,7 @@ rule muTect_2:
     params:
          walltime="24:00", mem="32", name="sn.mt_2", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -176,6 +207,7 @@ rule muTect_3:
     params:
          walltime="24:00", mem="32", name="sn.mt_3", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -206,6 +238,7 @@ rule muTect_4:
     params:
          walltime="24:00", mem="32", name="sn.mt_4", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -236,6 +269,7 @@ rule muTect_5:
     params:
          walltime="24:00", mem="32", name="sn.mt_5", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -266,6 +300,7 @@ rule muTect_6:
     params:
          walltime="24:00", mem="32", name="sn.mt_6", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -296,6 +331,7 @@ rule muTect_7:
     params:
          walltime="24:00", mem="32", name="sn.mt_7", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -326,6 +362,7 @@ rule muTect_8:
     params:
          walltime="24:00", mem="32", name="sn.mt_8", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -356,6 +393,7 @@ rule muTect_9:
     params:
          walltime="24:00", mem="32", name="sn.mt_9", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -386,6 +424,7 @@ rule muTect_10:
     params:
          walltime="24:00", mem="32", name="sn.mt_10", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -416,6 +455,7 @@ rule muTect_11:
     params:
          walltime="24:00", mem="32", name="sn.mt_11", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -446,6 +486,7 @@ rule muTect_12:
     params:
          walltime="24:00", mem="32", name="sn.mt_12", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -476,6 +517,7 @@ rule muTect_13:
     params:
          walltime="24:00", mem="32", name="sn.mt_13", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -506,6 +548,7 @@ rule muTect_14:
     params:
          walltime="24:00", mem="32", name="sn.mt_14", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -536,6 +579,7 @@ rule muTect_15:
     params:
          walltime="24:00", mem="32", name="sn.mt_15", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -566,6 +610,7 @@ rule muTect_16:
     params:
          walltime="24:00", mem="32", name="sn.mt_16", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -596,6 +641,7 @@ rule muTect_17:
     params:
          walltime="24:00", mem="32", name="sn.mt_17", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -626,6 +672,7 @@ rule muTect_18:
     params:
          walltime="24:00", mem="32", name="sn.mt_18", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -656,6 +703,7 @@ rule muTect_19:
     params:
          walltime="24:00", mem="32", name="sn.mt_19", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -686,6 +734,7 @@ rule muTect_20:
     params:
          walltime="24:00", mem="32", name="sn.mt_20", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -716,6 +765,7 @@ rule muTect_21:
     params:
          walltime="24:00", mem="32", name="sn.mt_21", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -746,6 +796,7 @@ rule muTect_22:
     params:
          walltime="24:00", mem="32", name="sn.mt_22", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -776,6 +827,7 @@ rule muTect_X:
     params:
          walltime="24:00", mem="32", name="sn.mt_X", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -806,6 +858,7 @@ rule muTect_Y:
     params:
          walltime="24:00", mem="32", name="sn.mt_Y", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -836,6 +889,7 @@ rule muTect_MT:
     params:
          walltime="24:00", mem="32", name="sn.mt_MT", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "

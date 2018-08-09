@@ -1,0 +1,174 @@
+#!/bin/bash
+
+#levi mangarin wolchok lab 2016
+#separating calls into seperate antigens using sliding windows
+#array of files pertaining to .kmer 
+
+
+usage() { echo "$0: generate candidate epitopes from kmers from snpeff mutect output. flags:" && grep " .)\ #" $0; exit 0; }
+[ $# -eq 0 ] && usage
+while getopts ":hw:t:" arg; do
+    case $arg in
+        w) #work directory
+            WORK_DIR=$OPTARG
+            ;;
+        t) #array of tumor IDs i.e. bam file strings with no filetype
+            TUMOR=$OPTARG
+            ;;
+        h | *) # Display help.
+            usage
+            exit 0
+            ;;
+    esac
+done
+#TUMOR_FIXED=${TUMOR#$"/data/wolchok/PROJECT/$PROJECT/muTect/"}
+#TUMOR_FIXED=${TUMOR_FIXED%$".kmer"}
+
+TUMOR_FIXED=${TUMOR%%.*};
+TUMOR_FIXED=${TUMOR_FIXED##*/};
+WORK_DIR_FIXED=${WORK_DIR%$"/"}
+
+#call kmers for certain lengths (for neoantigens, usually 8-13)
+kmerRange={9...13}
+#kmer=12
+#for kmer = 12, i=2 kmer-1
+#kmer 11,i=3 kmer -2
+#kmer 10 i 4 kmer -3
+
+
+##################################################################################
+#generate kmers for mutect output
+cd $WORK_DIR/muTect/
+for file in *.kmer; do cp $file $WORK_DIR/neoantigen/$file; done
+for file in *.rnafilter; do cp $file $WORK_DIR/neoantigen/$file; done
+
+cd "$WORK_DIR"/neoantigen
+
+for i in {9..13}; do
+    kmer="$i"
+    mkdir -p ""$kmer"mer"
+
+    for ((i=0;i<${#TUMOR_FIXED[@]};++i)); do
+        sample="${TUMOR_FIXED[$i]}"
+    
+        echo "seperating "$sample" into kmers of size "$kmer""
+
+        #normal kmers
+        cut -d' ' -f1 "$sample".kmer > ""$kmer"mer"/"$sample".normal.kmer #cut column with normal kmer
+        cd ""$kmer"mer"
+        grep -x '.\{27,27\}' $sample.normal.kmer > $sample.normal.kmer.temp #remove shortened peptides due to stop codons (and delete empty lines)
+    
+        filename=""$sample".normal.kmer.temp"
+    
+#create candidate peptides
+        cat "$filename" | while read -r line 
+        do #loop through lines of file
+            str="$line"
+            for ((i=(14-$kmer); i<$((${#line}-$kmer-(13-$kmer))); i++)); do \
+               echo "${str:$i:$kmer}" >> "$sample".normal.pep #echo sliding windows into new file
+            done;
+        done
+        rm $sample.normal.kmer.temp
+        cd ..
+
+        #tumor kmers
+        cut -d' ' -f3 "$sample".kmer > ""$kmer"mer"/"$sample".tumor.kmer #cut column with tumor kmer
+        cd ""$kmer"mer"
+        grep -x '.\{27,27\}' $sample.tumor.kmer > $sample.tumor.kmer.temp #remove shortened peptides due to stop codons (and delete empty lines)
+    
+        filename=""$sample".tumor.kmer.temp"
+    
+        #create candidate peptides
+        cat "$filename" | while read -r line 
+        do #loop through lines of file
+            str="$line"
+            for ((i=(14-$kmer); i<$((${#line}-$kmer-(13-$kmer))); i++)); do \
+               echo "${str:$i:$kmer}" >> "$sample".tumor.pep #echo sliding windows into new file
+            done;
+        done
+        rm $sample.tumor.kmer.temp
+        cd ..
+    done
+done
+
+
+#join all kmer files together (TODO have to run for all kmer lengths first)
+for ((i=0;i<${#TUMOR_FIXED[@]};++i)); do
+    temppep="${TUMOR_FIXED[$i]}"
+    
+    cat 9mer/"$temppep".normal.pep \
+        10mer/"$temppep".normal.pep \
+        11mer/"$temppep".normal.pep \
+        12mer/"$temppep".normal.pep \
+        13mer/"$temppep".normal.pep \
+        > "$temppep".normal.join.pep
+
+    cat 9mer/"$temppep".tumor.pep \
+        10mer/"$temppep".tumor.pep \
+        11mer/"$temppep".tumor.pep \
+        12mer/"$temppep".tumor.pep \
+        13mer/"$temppep".tumor.pep \
+        > "$temppep".tumor.join.pep
+done
+
+#################################################################################
+################################################################################
+##creation of kmer files for rna filtering
+##for ((i=0;i<${#TUMOR_FIXED[@]};++i)); do \
+##    cd $WORK_DIR/muTect/
+##    echo   "extracting rnafilter info for "${TUMOR_FIXED[$i]}""
+##    cut -f1,2,11 "${TUMOR_FIXED[$i]}".vcf.neo.ann > "${TUMOR_FIXED[$i]}".rnafilter #cut out AA_around field
+##    cp "${TUMOR_FIXED[$i]}".rnafilter $WORK_DIR/neoantigen/"${TUMOR_FIXED[$i]}".rnafilter 
+##done
+
+#create same file with chr and loci info for rna filtering (only need to do tumor side)
+for i in {9..13}; do
+    kmer="$i"
+    mkdir -p ""$kmer"mer"
+
+    for ((i=0;i<${#TUMOR_FIXED[@]};++i)); do
+        sample="${TUMOR_FIXED[$i]}"
+    
+        echo "seperating "$sample" into kmers of size "$kmer" rnafilter with locus info"
+
+        #setup for tumor kmers
+        cut -d' ' -f3 "$sample".kmer > ""$kmer"mer"/"$sample".tumor.kmer #cut column with tumor kmer
+        cd ""$kmer"mer"
+        grep -x '.\{27,27\}' "$sample".tumor.kmer > "$sample".tumor.kmer.temp #remove shortened peptides due to stop codons (and delete empty lines)
+        echo -e "kmer\n"$(cat $sample.tumor.kmer.temp)"" > $sample.tumor.kmer.temp #account for header so that rnafilter column stays aligned during paste
+
+        #rnafilter kmers
+        paste -d"\t" "$sample".tumor.kmer ../"$sample".rnafilter | awk 'length($1) == 27 { print $0 }' > $sample.rnafilter.kmer.temp #add location data to neoepitopes, remove shortened peptides due to stop codons (and delete empty lines) 
+    
+        filename=""$sample".rnafilter.kmer.temp"
+
+        #create candidate peptides
+        cat "$filename" | while read -r line 
+            do #loop through lines of file
+                str="$line"
+                #for((i=(14-$kmer); i<$((${#line}-$kmer-(13-$kmer))); i++)); do  
+                for((i=(14-$kmer); i<$((27-$kmer-(13-$kmer))); i++)); do  
+                    echo "$str" >> "$sample".rnafilter.pep; #echo sliding windows into new file
+                done;
+            done
+
+        #rm $sample.rnafilter.kmer.temp
+        #rm $sample.tumor.kmer.temp
+        cd ..
+    done
+done
+
+#join all kmer files together (TODO have to run for all kmer lengths first)
+for ((i=0;i<${#TUMOR_FIXED[@]};++i)); do
+    temppep="${TUMOR_FIXED[$i]}"
+
+    cat 9mer/"$temppep".rnafilter.pep \
+        10mer/"$temppep".rnafilter.pep \
+        11mer/"$temppep".rnafilter.pep \
+        12mer/"$temppep".rnafilter.pep \
+        13mer/"$temppep".rnafilter.pep \
+        > "$temppep".rnafilter.join.pep
+done
+################################################################################
+################################################################################
+################################################################################

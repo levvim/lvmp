@@ -50,89 +50,92 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 ################################################################################
 rule all:
     input: 
-        expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample) #fastq to preprocessed bam
-        #expand(FILE + 'fastqc/{SAMPLE}_fastqc.html', SAMPLE = sample) #fastqc
+        expand(FILE + 'neoantigen/{SAMPLE}.pan', SAMPLE = sample)
 
 ################################################################################
 rule snpeff_muTect:
     input:
-         tumor = FILE + 'muTect/{sample}.T.vcf', file = FILE, snpeff=SNPEFF
+         tumor = FILE + 'muTect/{sample}.merge.vcf', file = FILE, snpeff=SNPEFF, refs=REFS, scripts=SCRIPTS
     output:
-         vcf=FILE + 'muTect/{sample}.vcf.neo.ann', kmer=FILE + 'muTect/{sample}.kmer'
+         vcf=FILE + 'muTect/{sample}.vcf.neo.ann'
 
     threads: 1
     params:
-         walltime="08:00", mem="8", name="sn.snpeff.mutect", threads="1"
+         walltime="01:00", mem="8", name="sn.snpeff.mt", threads="1"
     shell:
+        "module add singularity/2.4.2; "
         "TUMOR={input.tumor}; "
         "TUMOR=${{TUMOR%%.*}}; "
         "TUMOR=${{TUMOR##*/}}; "
         "cd {input.file}muTect; "
-        "grep \"PASS\|ALT\" \"$TUMOR\".T.vcf > \"$TUMOR\".T.vcf.pass;"
+        "grep \"PASS\|ALT\" {input.tumor} > \"$TUMOR\".vcf.pass;"
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
-        "java -Xmx{params.mem}G -jar snpEff.jar eff -a 13 -c ./opt/pimmuno/snpeff/snpEff.config \ "
-        "   -noStats -hgvs -canon -o txt -v hg19 \"$TUMOR\".T.vcf.pass \ "
-        "   |perl ./opt/pimmuno/snpeff/scripts/vcfEffOnePerLine.pl  > \"$TUMOR\".T.vcf.neo.ann "
+        "java -Xmx{params.mem}G -jar /opt/pimmuno/snpeff/snpEff.jar eff -a 13 -c ~/programs/snpEff-3.6/snpEff.config "
+        "   -noStats -hgvs -canon -o txt -v \"GRCh37.75\" \"$TUMOR\".vcf.pass > \"$TUMOR\".vcf.pass2; "
+        "   cat \"$TUMOR\".vcf.pass2 | perl {input.scripts}/vcfEffOnePerLine.pl  > {output.vcf} "
+        #"java -Xmx{params.mem}G -jar /opt/pimmuno/snpeff/snpEff.jar eff -a 13 -c /opt/pimmuno/snpeff/snpEff.config "
 
 rule antigen_call:
     input: 
-        vcf=FILE + 'muTect/{sample}.vcf.neo.ann', kmer=FILE + 'muTect/{sample}.kmer', hla=FILE + 'optitype/{sample}.hla.tsv', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
+        vcf=FILE + 'muTect/{sample}.vcf.neo.ann', hla=FILE + 'optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
     output: 
-        normal = FILE + 'neoantigen/{sample}.normal.pep'
-        tumor = FILE + 'neoantigen/{sample}.tumor.pep'
-        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep'
+        normal = FILE + 'neoantigen/{sample}.normal.pep',
+        tumor = FILE + 'neoantigen/{sample}.tumor.pep',
+        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep',
+        kmer=FILE + 'neoantigen/{sample}.kmer'
     params:
         walltime="2:00", mem="4", name="sn.acall", threads="1"
     shell:
-        "module add singularity; "
-        "TUMOR={input.tumor}; "
+        "module add singularity/2.4.2; "
+        "TUMOR={input.vcf}; "
         "TUMOR=${{TUMOR%%.*}}; "
         "TUMOR=${{TUMOR##*/}}; "
         "cd {input.file}/neoantigen; "
         "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+        "cut -f23 {input.vcf} > {output.kmer}; "
+        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
         "cut -f1,2,11 {input.vcf} > \"$TUMOR\".rnafilter; "
         "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "{input.scripts}/antigen_call_i -w {input.file} -t {input.kmer}; "
+        "{input.scripts}/antigen_call_i -w {input.file} -t {output.kmer}; "
         "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".normal.join.pep > {output.normal}; done; "
+        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".normal.join.pep > {output.normal}; "
         "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".tumor.join.pep > {output.tumor}; done; "
+        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".tumor.join.pep > {output.tumor}; "
         "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".rnafilter.join.pep > {output.rnafilter}; done; "
+        "tr '[:lower:]' '[:upper:]' < \"$TUMOR\".rnafilter.join.pep > {output.rnafilter};"
 
 rule nmp:
     input: 
         normal = FILE + 'neoantigen/{sample}.normal.pep',
         tumor = FILE + 'neoantigen/{sample}.tumor.pep',
-        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep'
-        hla='optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
+        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep',
+        hla= FILE + 'optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
     output: 
         normal = FILE + 'neoantigen/{sample}.normal.pan',
         tumor = FILE + 'neoantigen/{sample}.tumor.pan',
     params:
-        walltime="12:00", mem="8", name="sn.fastqc", threads="1"
+        walltime="12:00", mem="8", name="sn.nmp", threads="1"
     shell:
-        "module add singularity; "
+        "module add singularity/2.4.2; "
         "SAMPLE={input.tumor}; "
         "SAMPLE=${{SAMPLE%%.*}}; "
         "SAMPLE=${{SAMPLE##*/}}; "
         "cd {input.file}/neoantigen; "
+        "touch {output.normal}; touch {output.tumor}; "
         "cat {input.hla} | while read -r line; do "
-        "   singularity exec --bind {input.file}:{input.file} {input.nmp} "
         "       $HOME/programs/netMHCpan-3.0/netMHCpan -inptype 1 -a \"$line\" -s -v -l 9,10,11,12,13 "
-        "       -xls -xlsfile \"$SAMPLE\".normal.\"$line\".xls -f {input.normal} > {output.normal}; "
-        "   singularity exec --bind {input.file}:{input.file} {input.nmp} "
+        "       -xls -xlsfile \"$SAMPLE\".normal.\"$line\".xls -f {input.normal} >> {output.normal}; "
         "       $HOME/programs/netMHCpan-3.0/netMHCpan -inptype 1 -a \"$line\" -s -v -l 9,10,11,12,13 "
-        "       -xls -xlsfile \"$SAMPLE\".tumor.\"$line\".xls -f {input.tumor} > {output.tumor}; "
+        "       -xls -xlsfile \"$SAMPLE\".tumor.\"$line\".xls -f {input.tumor} >> {output.tumor}; "
         "done"
 
-rule nmp_filter:
+rule nmp_filter_noRNA:
     input: 
         normal = FILE + 'neoantigen/{sample}.normal.pan',
         tumor = FILE + 'neoantigen/{sample}.tumor.pan',
-        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep'
-        rna= FILE + 'rna/{sample}.bam'
-        hla='optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
+        rnafilter = FILE + 'neoantigen/{sample}.rnafilter.pep',
+        rna= FILE + 'rna/{sample}.bam',
+        hla=FILE + 'optitype/{sample}.hla', file = FILE, prepro = PREPRO, refs=REFS, scripts=SCRIPTS
     output: 
         tumor = FILE + 'neoantigen/{sample}.pan',
     params:
@@ -143,8 +146,22 @@ rule nmp_filter:
         "SAMPLE=${{SAMPLE%%.*}}; "
         "SAMPLE=${{SAMPLE##*/}}; "
         "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "    {input.scripts}/neoantigen_filter "
+        "    {input.scripts}/neoantigen_filter_i "
         "        -w {input.file}/neoantigen"
+        "        -f {input.scripts}/neoantigen_normalfilter.r"
         "        -t \"$SAMPLE\ "
-        "        -r {input.rna} "
-        "        -s {input.hla}; "
+        "        -i {input.hla} "
+        "        -o {output.tumor}; "
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
