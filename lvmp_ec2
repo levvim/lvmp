@@ -7,7 +7,8 @@
 #getopts for argument input
 usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-k "SDWRKDSFJKCKESDFKJCK" \n\t-s "123kjdkfdaSDKsfkslfLK12KJDckjsdkj324kjHS" \n\t-c ["picard/picard:latest","levim/dsprepro:1.1"] \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } 
 [ $# -eq 0 ] && usage
-while getopts ":h:k:s:c:" arg; do
+#while getopts ":h:k:s:c:" arg; do
+while getopts ":h:k:s:" arg; do
     case $arg in
         u) #User id (usually ec2-user)
             USER=${OPTARG}
@@ -18,11 +19,11 @@ while getopts ":h:k:s:c:" arg; do
         s) #AWS Secret key
             SECRETKEY=${OPTARG}
             ;;
-        c) #array of container IDs
-            set -f # disable glob
-            IFS=' ' # split on space characters
-            CONTAINERID=($OPTARG)
-            ;;
+#        c) #array of container IDs
+#            set -f # disable glob
+#            IFS=' ' # split on space characters
+#            CONTAINERID=($OPTARG)
+#            ;;
         h | *) # Display help.
             usage
             exit 0
@@ -100,9 +101,9 @@ aws configure set aws_secret_access_key $SECRETKEY
 ################################################################################
 # Install Containers
 # cd $CONTAINERS
-for ((i=0;i<${#CONTAINERID[@]};++i)); do
-    singularity pull docker://"${CONTAINERID[$i]}";
-done
+#for ((i=0;i<${#CONTAINERID[@]};++i)); do
+#    singularity pull docker://"${CONTAINERID[$i]}";
+#done
 
 ################################################################################
 ################################################################################
