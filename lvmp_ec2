@@ -8,7 +8,7 @@
 usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-k "SDWRKDSFJKCKESDFKJCK" \n\t-s "123kjdkfdaSDKsfkslfLK12KJDckjsdkj324kjHS" \n\t-c ["picard/picard:latest","levim/dsprepro:1.1"] \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } 
 [ $# -eq 0 ] && usage
 #while getopts ":h:k:s:c:" arg; do
-while getopts ":h:k:s:" arg; do
+while getopts ":hu:k:s:" arg; do
     case $arg in
         u) #User id (usually ec2-user)
             USER=${OPTARG}
@@ -19,17 +19,18 @@ while getopts ":h:k:s:" arg; do
         s) #AWS Secret key
             SECRETKEY=${OPTARG}
             ;;
-#        c) #array of container IDs
-#            set -f # disable glob
-#            IFS=' ' # split on space characters
-#            CONTAINERID=($OPTARG)
-#            ;;
         h | *) # Display help.
             usage
             exit 0
             ;;
     esac
 done
+
+#        c) #array of container IDs
+#            set -f # disable glob
+#            IFS=' ' # split on space characters
+#            CONTAINERID=($OPTARG)
+#            ;;
 
 ################################################################################
 # Update system and install pipeline program dependencies
