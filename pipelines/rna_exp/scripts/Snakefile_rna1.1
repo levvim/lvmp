@@ -80,19 +80,22 @@ rule merge_bam:
     params:
         walltime="12:00", mem="64", name="sn.merge", threads="1"
     run:
-        inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
-        shell("module add singularity/2.4.2; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-        "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
-        "MergeSamFiles "
-        "{inputstr} "
-        "O={output}  "
-        "SORT_ORDER=coordinate  "
-        "VALIDATION_STRINGENCY=LENIENT  "
-        "CREATE_INDEX=true  "
-        "USE_THREADING=false  "
-        "TMP_DIR={input.tmpdir} "
-        "#MAX_RECORDS_IN_RAM=5000000; ")
+        if wildcards.RUN == 'L1':
+            shell("mv {input} {output}")
+        else:
+            inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
+            shell("module add singularity/2.4.2; "
+            "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+            "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
+            "MergeSamFiles "
+            "{inputstr} "
+            "O={output}  "
+            "SORT_ORDER=coordinate  "
+            "VALIDATION_STRINGENCY=LENIENT  "
+            "CREATE_INDEX=true  "
+            "USE_THREADING=false  "
+            "TMP_DIR={input.tmpdir} "
+            "#MAX_RECORDS_IN_RAM=5000000; ")
 
 ################################################################################
 rule countreads:

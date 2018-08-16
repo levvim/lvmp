@@ -108,21 +108,21 @@ if( -s $vep_anno ) {
 else {
     warn "STATUS: Running VEP and writing to: $vep_anno\n";
     # Make sure we can find the VEP script and the reference FASTA
-    ( -s "$vep_path/variant_effect_predictor.pl" ) or die "ERROR: Cannot find VEP script variant_effect_predictor.pl in path: $vep_path\n";
+    ( -s "$vep_path/vep" ) or die "ERROR: Cannot find VEP script variant_effect_predictor.pl in path: $vep_path\n";
     ( -s $ref_fasta ) or die "ERROR: Reference FASTA not found: $ref_fasta\n";
     
     # Contruct VEP command using some default options and run it
-    my $vep_cmd = "$perl_bin $vep_path/variant_effect_predictor.pl --species $species --assembly $ncbi_build --offline --no_progress --no_stats --sift b --ccds --uniprot --hgvs --symbol --numbers --domains --gene_phenotype --canonical --protein --biotype --uniprot --tsl --pubmed --variant_class --shift_hgvs 1 --check_existing --check_alleles --check_ref --total_length --allele_number --no_escape --xref_refseq --failed 1 --vcf --minimal --flag_pick_allele --pick_order canonical,tsl,biotype,rank,ccds,length --dir $vep_data --fasta $ref_fasta --input_file $vcf_file --output_file $vep_anno";
+    my $vep_cmd = "$perl_bin $vep_path/vep --species $species --assembly $ncbi_build --offline --no_progress --no_stats --sift b --ccds --uniprot --hgvs --symbol --numbers --domains --gene_phenotype --canonical --protein --biotype --uniprot --tsl --pubmed --variant_class --shift_hgvs 1 --check_existing --check_ref --total_length --allele_number --no_escape --xref_refseq --failed 1 --vcf --minimal --flag_pick_allele --pick_order canonical,tsl,biotype,rank,ccds,length --dir $vep_data --fasta $ref_fasta --input_file $vcf_file --output_file $vep_anno";
     # VEP barks if --fork is set to 1. So don't use this argument unless it's >1
     $vep_cmd .= " --fork $vep_forks" if( $vep_forks > 1 );
     # Add --cache-version only if the user specifically asked for a version
     $vep_cmd .= " --cache_version $cache_version" if( $cache_version );
     # Add options that only work on human variants
-    $vep_cmd .= " --polyphen b --gmaf --maf_1kg --maf_esp" if( $species eq "homo_sapiens" );
+    $vep_cmd .= " --polyphen b --af --af_1kg --af_esp" if( $species eq "homo_sapiens" );
     # Add options that work for most species, except a few
     $vep_cmd .= " --regulatory" unless( $species eq "canis_familiaris" );
     # Add options that only work on human variants mapped to the GRCh37 reference genome
-    $vep_cmd .= " --plugin ExAC,$vep_data/ExAC.r0.3.sites.minus_somatic.vcf.gz" if( $species eq "homo_sapiens" and $ncbi_build eq "GRCh37" );
+    $vep_cmd .= " --plugin ExAC,$vep_data/ExAC.r0.3.1.sites.vep.vcf.gz" if( $species eq "homo_sapiens" and $ncbi_build eq "GRCh37" );
 
     # Make sure it ran without error codes
     system( $vep_cmd ) == 0 or die "\nERROR: Failed to run the VEP annotator!\nCommand: $vep_cmd\n";

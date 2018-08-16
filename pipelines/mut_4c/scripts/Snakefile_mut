@@ -64,7 +64,7 @@ rule all:
 # Combine readgroups
 rule readgroups_bam:
     input:
-        fastq = FILE + 'fastq/{sample}.L1.01.fastq.rg.txt', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD, scripts=SCRIPTS
+        fastqrg = FILE + 'fastq/{sample}.L1.01.fastq.rg.txt', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD, scripts=SCRIPTS
     output:
         FILE + "bqsr/{sample}.pp.rg.bam"
     threads: 1
@@ -72,7 +72,6 @@ rule readgroups_bam:
         walltime="06:00", mem="16", name="sn.rg", threads="1"
     shell:
         "module add singularity; "
-        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " #extract readgroup information
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "bash -c \"java -Xmx{params.mem}g -jar /usr/picard/picard.jar AddOrReplaceReadGroups "
         "I={input.bam} "
@@ -135,56 +134,56 @@ rule muTect_rescue:
         "--normal_id {input.file}fastq/\"$TUMOR_FIXED\".N.01 "
         "--out {output} "
 
-rule HaplotypeCaller:
-    input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138 = DBSNP138e, gatk=GATK , refs=REFS
-    output:
-         FILE + 'HC/{sample}.T.vcf'
-    threads: 1
-    params:
-         walltime="32:00", mem="32", name="sn.HC", threads="1"
-    shell:
-        "module add singularity; "
-        "TUMOR={input.tumor}; NORMAL={input.normal}; "
-        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
-        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
-        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
-        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
-        "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
-        " -T HaplotypeCaller "
-        " -R {input.ref} "
-        " -I {input.tumor} -I {input.normal} "
-        " --dbsnp {input.dbsnp138} "
-        " --downsampling_type NONE "
-        " --annotation AlleleBalanceBySample "
-        " --annotation ClippingRankSumTest "
-        " --read_filter BadCigar "
-        " --num_cpu_threads_per_data_thread {params.threads} "
-        " -o {input.file}HC/\"$TUMOR_FIXED\".T.vcf; "
-
-#rule HaplotypeCaller-4.0:
+#rule HaplotypeCaller3.4:
 #    input:
-#         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138e = DBSNP138e, gatk=GATK
+#         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138 = DBSNP138e, gatk=GATK , refs=REFS
 #    output:
 #         FILE + 'HC/{sample}.T.vcf'
 #    threads: 1
 #    params:
-#         walltime="24:00", mem="32", name="sn.HC", threads="1"
+#         walltime="32:00", mem="32", name="sn.HC", threads="1"
 #    shell:
 #        "module add singularity; "
 #        "TUMOR={input.tumor}; NORMAL={input.normal}; "
-#        "TUMOR_FIXED=${{TUMOR%%.*}}; "
-#        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
-#        "NORMAL_FIXED=${{NORMAL%%.*}}; "
-#        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
-#        'singularity exec --bind {input.file}:{input.file} {input.gatk} '
-#        "gatk HaplotypeCaller "
+#        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+#        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+#        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+#        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
+#        "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
+#        " -T HaplotypeCaller "
 #        " -R {input.ref} "
-#        " -I {input.tumor} "
-#        " -O {input.file}HC/\"$TUMOR_FIXED\".T.vcf "
-#        " -ERC GVCF "
-#        " --dbsnp {input.dbsnp138e} "
+#        " -I {input.tumor} -I {input.normal} "
+#        " --dbsnp {input.dbsnp138} "
+#        " --downsampling_type NONE "
+#        " --annotation AlleleBalanceBySample "
+#        " --annotation ClippingRankSumTest "
+#        " --read_filter BadCigar "
+#        " --num_cpu_threads_per_data_thread {params.threads} "
+#        " -o {input.file}HC/\"$TUMOR_FIXED\".T.vcf; "
+
+rule HaplotypeCaller:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138e = DBSNP138e, gatk=GATK
+    output:
+         FILE + 'HC/{sample}.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.HC", threads="1"
+    shell:
+        "module add singularity; "
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        "singularity exec --bind {input.file}:{input.file} {input.gatk} "
+        "gatk HaplotypeCaller "
+        " -R {input.ref} "
+        " -I {input.tumor} "
+        " -O {input.file}HC/\"$TUMOR_FIXED\".T.vcf "
+        " -ERC GVCF "
+        " --dbsnp {input.dbsnp138e} "
 
 rule muTect2:
     input:
@@ -201,17 +200,13 @@ rule muTect2:
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
         "NORMAL_FIXED=${{NORMAL%%.*}}; "
         "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
-        'N_SM="$(samtools view -H {input.normal} | grep SM | awk \'{{print $5}}\' | cut -c4-)"; '
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
-        'T_SM="$(samtools view -H {input.tumor} | grep SM | awk \'{{print $5}}\' | cut -c4-)";  '
-        'singularity exec --bind {input.file}:{input.file} /data/wolchok/singularity/gatk-4.0.1.2.simg '
+        'singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} /data/wolchok/singularity/gatk-4.0.1.2.simg '
         'gatk Mutect2 '
         ' -R {input.ref} '
         ' --I {input.tumor} '
-        ' --tumor-sample \"$T_SM\" '
+        ' --tumor-sample \"$(samtools view -H {input.tumor} | grep SM | awk \'{{print $5}}\' | cut -c4-)\" '
         ' --I {input.normal} '
-        ' --normal-sample \"$N_SM\" '
+        ' --normal-sample \"$(samtools view -H {input.normal} | grep SM | awk \'{{print $5}}\' | cut -c4-)\" '
         ' --output {input.file}muTect2/\"$TUMOR_FIXED\".T.vcf '
         
 rule somaticsniper:
@@ -272,13 +267,12 @@ rule strelka2:
         #"singularity exec --bind {input.file}:{input.file} /data/wolchok/singularity/hgmut.img "
         "module add java/8.0; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
-        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
-        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
-        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
-        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
         "rm -rf {input.file}manta/\"$TUMOR_FIXED\".T/; " 
         "rm -rf {input.file}strelka2/\"$TUMOR_FIXED\".T/; " 
-        ""
         "cd {input.file}manta; "
         "$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py   "
         "--config=$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py.ini "
@@ -288,7 +282,6 @@ rule strelka2:
         "--referenceFasta {input.ref} "
         "--runDir {input.file}manta/\"$TUMOR_FIXED\".T; "
         "{input.file}manta/\"$TUMOR_FIXED\".T/runWorkflow.py -g {params.mem} -m local;"
-        ""
         "cd {input.file}strelka2; "
         "$HOME/programs/strelka-2.9.2.centos6_x86_64/bin/configureStrelkaSomaticWorkflow.py "
         "--config=$HOME/programs/strelka-2.9.2.centos6_x86_64/bin/configureStrelkaSomaticWorkflow.py.ini "
@@ -300,6 +293,11 @@ rule strelka2:
         "--runDir {input.file}strelka2/\"$TUMOR_FIXED\".T; "
         "{input.file}strelka2/\"$TUMOR_FIXED\".T/runWorkflow.py -g {params.mem} -m local; "
 
+        #"TUMOR={input.tumor}; NORMAL={input.normal}; "
+        #"TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        #"TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        #"NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        #"NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
 #cd {input.file}manta;
 #$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py
 #--config=$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py.ini
@@ -417,7 +415,7 @@ rule varscan2_1:
     shell:
         "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
-        "samtools mpileup -r 1 -A -f {input.ref} {input.normal} {input.tumor} \|  "
+        "samtools mpileup -r 1 -A -f {input.ref} {input.normal} {input.tumor} |  "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
         "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
 
