@@ -10,14 +10,17 @@ Run generalized setup script. This will update the system and install pipeline d
 Pull relevant containers
     cd ~/CONTAINERS/
     singularity pull docker://levim/hgrna:1.1
+    singularity pull docker://broadinstitute/picard:latest
 
 Pull reference set
     aws s3 cp --recursive s3://immunoseqexternal/COMPUTE/refs/GRCh37hg19/ /home/ec2-user/REFS/
-    aws s3 cp --recursive s3://immunoseqexternal/COMPUTE/refs/ENSEMBL.homo_sapiens.release-75/ /home/ec2-user/REFS/                                                                                                          
+    aws s3 cp --recursive s3://immunoseqexternal/COMPUTE/refs/ENSEMBL.homo_sapiens.release-75/ /home/ec2-user/REFS/
+
 Import project files
     aws s3 cp s3://immunoseqexternal/Collab_PC/CTLA4/RNASeq/FASTQ_Files/Sample_SK_MEL_301T-Sample_SK_MEL_301T/Sample_SK_MEL_301T-tumor-R1-cat.fastq /home/ec2-user/PROJECT/rnatest/rna_fastq/Sample_SK_MEL_301T.L1.01.fastq
     aws s3 cp s3://immunoseqexternal/Collab_PC/CTLA4/RNASeq/FASTQ_Files/Sample_SK_MEL_301T-Sample_SK_MEL_301T/Sample_SK_MEL_301T-tumor-R2-cat.fastq /home/ec2-user/PROJECT/rnatest/rna_fastq/Sample_SK_MEL_301T.L1.02.fastq
 
+mkdir ~/PROJECT/rnatest/tmp
 Run pipeline
 REFS="/home/ec2-user/REFS/ENSEMBL.homo_sapiens.release-75/"
 CONTAINERS="/home/ec2-user/CONTAINERS/"

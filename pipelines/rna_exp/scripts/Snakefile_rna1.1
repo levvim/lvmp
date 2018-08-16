@@ -51,7 +51,7 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 
 ################################################################################
 rule all:
-    input: expand(FILE + "counts/{SAMPLE}.merge.bam.txt",  SAMPLE = sample),
+    input: expand(FILE + "counts/{SAMPLE}.bam.txt",  SAMPLE = sample),
 
 ################################################################################
 rule align_reads:
@@ -60,31 +60,31 @@ rule align_reads:
     output:
         temp(FILE + 'rna_fastq/{sample}.01.fastqAligned.sortedByCoord.out.bam')
     params:
-        walltime="48:00", mem="32", name="sn.star", threads="6"
+        walltime="48:00", mem="32", name="sn.star", threads="1"
     shell:
-        "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} {input.hgrna} "
-        "STAR-2.6.0a/bin/Linux_x86_64/STAR "
+        "/STAR-2.6.0a/bin/Linux_x86_64/STAR "
         "--genomeDir {input.starref} "
         "--readFilesIn {input.fastq1} {input.fastq2} "
+        "--genomeSAsparseD 2 "
         "--runThreadN {threads} "
         "--outSAMtype BAM SortedByCoordinate "
         "--outFileNamePrefix {input.fastq1} "
 
 rule merge_bam:
     input:
-        bam = expand(FILE + 'rna_fastq/{{sample}}.{RUN}.01.fastqAligned.sortedByCoord.out.bam', RUN=RID), 
+        bam = expand(FILE + 'rna_fastq/{{sample}}.{RUN}.01.fastqAligned.sortedByCoord.out.bam', RUN=RID),
         tmpdir = FILE + "tmp/", file=FILE, picard=PICARD, refs=REFS
     output:
          FILE + 'rna_fastq/{sample}.bam'
     params:
-        walltime="12:00", mem="64", name="sn.merge", threads="1"
+        walltime="12:00", mem="16", name="sn.merge", threads="1"
     run:
         if wildcards.RUN == 'L1':
             shell("mv {input} {output}")
         else:
             inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
-            shell("module add singularity/2.4.2; "
+            shell(
             "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
             "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
             "MergeSamFiles "
@@ -100,13 +100,12 @@ rule merge_bam:
 ################################################################################
 rule countreads:
     input:
-        bam = FILE + 'rna_fastq/{sample}.merge.bam', gtf = GTF, file=FILE, hgrna=HGRNA
+        bam = FILE + 'rna_fastq/{sample}.bam', gtf = GTF, file=FILE, hgrna=HGRNA
     output:
-        FILE + 'counts/{sample}.merge.bam.txt'
+        FILE + 'counts/{sample}.bam.txt'
     params:
         walltime="8:00", mem="12", name="sn.cr", threads="1"
     shell:
-        "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} {input.hgrna} "
         "featureCounts -p -T {threads} -t exon -g gene_id -a {input.gtf} -o {output} {input[0]}"
 
