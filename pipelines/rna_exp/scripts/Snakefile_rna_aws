@@ -37,7 +37,7 @@ INTERVALS= os.path.join(REFS + "human.exome.b37.interval_list")
 #STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
 #GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
 
-STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75")
+STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75/")
 GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75.gtf')
 
 # Containers
@@ -80,8 +80,8 @@ rule merge_bam:
     params:
         walltime="12:00", mem="16", name="sn.merge", threads="1"
     run:
-        if wildcards.RUN == 'L1':
-            shell("mv {input} {output}")
+        if RID == 'L1':
+            shell("mv {input.bam} {output}")
         else:
             inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
             shell(
