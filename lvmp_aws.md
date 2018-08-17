@@ -27,6 +27,7 @@ Create any additional project dirs
     mkdir -p ~/PROJECT/rnatest/tmp/
 
 Run pipeline
+
     REFS="/home/ec2-user/REFS/ENSEMBL.homo_sapiens.release-75/"
     CONTAINERS="/home/ec2-user/CONTAINERS/"
     SNAKEFILE="/home/ec2-user/lvmp/pipelines/rna_exp/scripts/Snakefile_rna1.1"
