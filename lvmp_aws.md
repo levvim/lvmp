@@ -16,8 +16,8 @@ Pull relevant containers
 
 Pull reference set and project files
 
-    aws s3 cp --recursive s3://immunoseqexternal/COMPUTE/refs/GRCh37hg19/ /home/ec2-user/REFS/
-    aws s3 cp --recursive s3://immunoseqexternal/COMPUTE/refs/ENSEMBL.homo_sapiens.release-75/ /home/ec2-user/REFS/ENSEMBL.homo_sapiens.release-75/
+    aws s3 cp --recursive s3://refs/GRCh37hg19/ /home/ec2-user/REFS/
+    aws s3 cp --recursive s3://refs/ENSEMBL.homo_sapiens.release-75/ /home/ec2-user/REFS/ENSEMBL.homo_sapiens.release-75/
 
     aws s3 cp s3://RNASeq/FASTQ_Files/Sample_SK_MEL_301T-tumor-R1-cat.fastq /home/ec2-user/PROJECT/rnatest/rna_fastq/Sample_SK_MEL_301T.L1.01.fastq
     aws s3 cp s3://RNASeq/FASTQ_Files/Sample_SK_MEL_301T-tumor-R2-cat.fastq /home/ec2-user/PROJECT/rnatest/rna_fastq/Sample_SK_MEL_301T.L1.02.fastq
