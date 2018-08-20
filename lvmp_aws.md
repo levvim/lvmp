@@ -35,4 +35,4 @@ Run pipeline
     SAMPLES="Sample_SK_MEL_301T"
     RID="L1"
 
-    snakemake \ -d $WORKDIR \ --snakefile $SNAKEFILE \ --rerun-incomplete \ --latency-wait 120 \ --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID"
+    snakemake  -d $WORKDIR  --snakefile $SNAKEFILE  --rerun-incomplete  --latency-wait 120  --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID"
