@@ -51,7 +51,7 @@ sudo service docker startsudo service
 ## singularity 2.5.2
 sudo wget https://github.com/singularityware/singularity/releases/download/2.5.2/singularity-2.5.2.tar.gz
 sudo tar -xzvf singularity-2.5.2.tar.gz 
-cd singularity
+cd singularity-2.5.2
 ./autogen.sh
 ./configure --prefix=/usr/local
 make
