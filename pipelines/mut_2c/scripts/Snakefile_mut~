@@ -1,0 +1,1466 @@
+# Levi Mangarin 2017 wolchok lab
+## Mutational analysis pipeline for preprocessed fastq files, calibrated for hg19 analysis
+
+#################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+#################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+#refs for using grch37 hg19 (broad)
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+DBSNP132 = os.path.join(REFS + "dbsnp_132_b37.leftAligned.vcf")
+COSMIC = os.path.join(REFS + "b37_cosmic_v54_120711.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts_b37.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
+REGION_b37="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y MT".split()
+region=REGION_b37
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+#GATK=os.path.join(CONTAINERS + "gatk-4.0.1.2.simg")
+MUTECT=os.path.join(CONTAINERS + "mutect-latest.simg")
+HGMUT=os.path.join(CONTAINERS + "hgmut-1.0.simg")
+VARSCAN=os.path.join(CONTAINERS + "varscan-latest.simg")
+GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+
+#################################################################################
+rule all:
+    input: 
+        expand(FILE + 'muTect/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region),
+        expand(FILE + 'strelka2/{SAMPLE}.T/results/variants/somatic.snvs.vcf.gz', SAMPLE=sample),
+        expand(FILE + 'somaticsniper/{SAMPLE}.T.vcf', SAMPLE=sample),
+        expand(FILE + 'muTect2/{SAMPLE}.T.vcf', SAMPLE=sample),
+        expand(FILE + 'varscan2/{SAMPLE}.{REGION}.T.vcf', SAMPLE=sample, REGION=region),
+        expand(FILE + 'HC/{SAMPLE}.T.vcf', SAMPLE=sample)
+        #expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE=sample),
+        #expand(FILE + 'muTect/{SAMPLE}.T.vcf', SAMPLE=sample),
+ 
+#################################################################################
+# Combine readgroups
+#rule readgroups_bam:
+#    input:
+#        fastq = FILE + 'fastq/{sample}.L1.01.fastq', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, prepro=PREPRO, picard=PICARD,scripts=SCRIPTS, refs=REFS
+#    output:
+#        FILE + "bqsr/{sample}.pp.rg.bam"
+#    threads: 1
+#    params:
+#        walltime="06:00", mem="16", name="sn.rg", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " #extract readgroup information
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+#        "bash -c \"java -Xmx{params.mem}g -jar /usr/picard/picard.jar AddOrReplaceReadGroups "
+#        "I={input.bam} "
+#        "O={output} "
+#        "TMP_DIR={input.tmpdir} "
+#        "RGID=$(awk \"NR==4\" {input.fastq}.rg.txt) "
+#        "RGLB=$(awk \"NR==8\" {input.fastq}.rg.txt) "
+#        "RGPL=$(awk \"NR==2\" {input.fastq}.rg.txt) "
+#        "RGPU=$(awk \"NR==6\" {input.fastq}.rg.txt) "
+#        "RGSM=$(awk \"NR==7\" {input.fastq}.rg.txt) \"; "
+##        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+##        "samtools index {output} "
+
+#################################################################################
+# Mutation calling
+rule muTect:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.T.vcf'
+    threads: 1
+    params:
+         walltime="08:00", mem="32", name="sn.mutect", threads="1"
+    shell:
+        "module add singularity; "
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".T.coverage.wig.txt "
+
+rule muTect_rescue:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, vcf = FILE + 'muTect/{sample}.T.vcf', prepro=PREPRO, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.rescue.T.vcf'
+    threads: 1
+    params:
+         walltime="01:00", mem="4", name="sn.mtrescue", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+        "python {input.scripts}/DMP_rescue.py "
+        "--vcf {input.vcf} "
+        "--txt {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.out"
+        "--tumor_id {input.file}fastq/\"$TUMOR_FIXED\".T.01 "
+        "--normal_id {input.file}fastq/\"$TUMOR_FIXED\".N.01 "
+        "--out {output} "
+
+rule HaplotypeCaller:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138 = DBSNP138e, gatk=GATK , refs=REFS
+    output:
+         FILE + 'HC/{sample}.T.vcf'
+    threads: 1
+    params:
+         walltime="32:00", mem="32", name="sn.HC", threads="1"
+    shell:
+        "module add singularity; "
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
+        "java -Xmx{params.mem}G -jar /home/biodocker/bin/gatk/target/GenomeAnalysisTK.jar "
+        " -T HaplotypeCaller "
+        " -R {input.ref} "
+        " -I {input.tumor} -I {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --downsampling_type NONE "
+        " --annotation AlleleBalanceBySample "
+        " --annotation ClippingRankSumTest "
+        " --read_filter BadCigar "
+        " --num_cpu_threads_per_data_thread {params.threads} "
+        " -o {input.file}HC/\"$TUMOR_FIXED\".T.vcf; "
+
+#rule HaplotypeCaller-4.0:
+#    input:
+#         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp138e = DBSNP138e, gatk=GATK
+#    output:
+#         FILE + 'HC/{sample}.T.vcf'
+#    threads: 1
+#    params:
+#         walltime="24:00", mem="32", name="sn.HC", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+#        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+#        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+#        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+#        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+#        'singularity exec --bind {input.file}:{input.file} {input.gatk} '
+#        "gatk HaplotypeCaller "
+#        " -R {input.ref} "
+#        " -I {input.tumor} "
+#        " -O {input.file}HC/\"$TUMOR_FIXED\".T.vcf "
+#        " -ERC GVCF "
+#        " --dbsnp {input.dbsnp138e} "
+
+rule muTect2:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, refs=REFS, scripts=SCRIPTS, prepro=PREPRO
+    output:
+         FILE + 'muTect2/{sample}.T.vcf'
+    threads: 1
+    params:
+         walltime="08:00", mem="32", name="sn.mutect2", threads="1"
+    shell:
+        'module add singularity; '
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+        'N_SM="$(samtools view -H {input.normal} | grep SM | awk \'{{print $5}}\' | cut -c4-)"; '
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
+        'T_SM="$(samtools view -H {input.tumor} | grep SM | awk \'{{print $5}}\' | cut -c4-)";  '
+        'singularity exec --bind {input.file}:{input.file} /data/wolchok/singularity/gatk-4.0.1.2.simg '
+        'gatk Mutect2 '
+        ' -R {input.ref} '
+        ' --I {input.tumor} '
+        ' --tumor-sample \"$T_SM\" '
+        ' --I {input.normal} '
+        ' --normal-sample \"$N_SM\" '
+        ' --output {input.file}muTect2/\"$TUMOR_FIXED\".T.vcf '
+        
+rule somaticsniper:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+    output:
+         FILE + 'somaticsniper/{sample}.T.vcf'
+    threads: 1
+    params:
+         walltime="08:00", mem="24", name="sn.somaticsniper", threads="1"
+    shell:
+        "$HOME/programs/somatic-sniper/build/bin/bam-somaticsniper -G -L -F vcf -f {input.ref} {input.tumor} {input.normal} {output}"
+
+
+rule strelka:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP,scripts=SCRIPTS
+    output:
+         FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf'
+    threads: 4
+    params:
+         walltime="24:00", mem="24", name="sn.strelka", threads="1"
+    shell:
+        #'module add singularity; '
+        #"singularity exec --bind {input.file}:{input.file} /data/wolchok/singularity/dsprepro-1.1.simg "
+        #"bash -c \" "
+        #" \" "
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        'cd {input.file}strelka; '
+        'rm -rf {input.file}strelka/\"$TUMOR_FIXED\".T/; ' 
+        "cp {input.scripts}/strelka_config_bwa_default.ini {input.file}strelka/\"$TUMOR_FIXED\".config.ini; "
+        "sed -i -e 's/Filters = 0/Filters = 1/g' {input.file}strelka/\"$TUMOR_FIXED\".config.ini; "
+        "{input.scripts}/configureStrelkaWorkflow.pl "
+        "    --normal={input.normal} "
+        "    --tumor={input.tumor} "
+        "    --ref={input.ref} "
+        "    --config={input.file}strelka/\"$TUMOR_FIXED\".config.ini "
+        "    --output-dir={input.file}strelka/\"$TUMOR_FIXED\".T/; "
+        "cd {input.file}strelka/\"$TUMOR_FIXED\".T/; "
+        "sed -i -e 's/Filters = 0/Filters = 1/g' {input.file}strelka/\"$TUMOR_FIXED\".config.ini; "
+        "sed -i -e 's/Filters = 0/Filters = 1/g' {input.file}strelka/\"$TUMOR_FIXED\".T/config/run.config.ini; "
+        "make -j {threads}; "
+
+rule strelka2:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+    output:
+         FILE + 'strelka2/{sample}.T/results/variants/somatic.snvs.vcf.gz'
+    threads: 4
+    params:
+         walltime="12:00", mem="24", name="sn.strelka2", threads="1"
+    shell:
+        #"module add singularity; "
+        #"singularity exec --bind {input.file}:{input.file} /data/wolchok/singularity/hgmut.img "
+        "module add java/8.0; "
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "rm -rf {input.file}manta/\"$TUMOR_FIXED\".T/; " 
+        "rm -rf {input.file}strelka2/\"$TUMOR_FIXED\".T/; " 
+        ""
+        "cd {input.file}manta; "
+        "$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py   "
+        "--config=$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py.ini "
+        "--exome "
+        "--normalBam {input.normal} "
+        "--tumorBam {input.tumor} "
+        "--referenceFasta {input.ref} "
+        "--runDir {input.file}manta/\"$TUMOR_FIXED\".T; "
+        "{input.file}manta/\"$TUMOR_FIXED\".T/runWorkflow.py -g {params.mem} -m local;"
+        ""
+        "cd {input.file}strelka2; "
+        "$HOME/programs/strelka-2.9.2.centos6_x86_64/bin/configureStrelkaSomaticWorkflow.py "
+        "--config=$HOME/programs/strelka-2.9.2.centos6_x86_64/bin/configureStrelkaSomaticWorkflow.py.ini "
+        "--exome "
+        "--normalBam {input.normal} "
+        "--tumorBam {input.tumor} "
+        "--indelCandidates {input.file}manta/\"$TUMOR_FIXED\".T/results/variants/candidateSmallIndels.vcf.gz "
+        "--referenceFasta {input.ref} "
+        "--runDir {input.file}strelka2/\"$TUMOR_FIXED\".T; "
+        "{input.file}strelka2/\"$TUMOR_FIXED\".T/runWorkflow.py -g {params.mem} -m local; "
+
+#cd {input.file}manta;
+#$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py
+#--config=$HOME/programs/manta-1.3.2.centos6_x86_64/bin/configManta.py.ini
+#--exome
+#--normalBam {input.normal}
+#--tumorBam {input.tumor}
+#--referenceFasta {input.ref}
+#--runDir {input.file}manta/\"$TUMOR_FIXED\".T
+#
+#"{input.file}manta/\"$TUMOR_FIXED\".T/runWorkflow.py -g {params.mem} -m local;"
+#
+#cd {input.file}strelka2;
+#$HOME/programs/strelka-2.9.2.centos6_x86_64/bin/configureStrelkaSomaticWorkflow.py
+#--config=$HOME/programs/strelka-2.9.2.centos6_x86_64/bin/configureStrelkaSomaticWorkflow.py.ini
+#--exome
+#--normalBam {input.normal}
+#--tumorBam {input.tumor}
+#--indelCandidates {input.file}manta/\"$TUMOR_FIXED\".T/results/variants/candidateSmallIndels.vcf.gz
+#--referenceFasta {input.ref}
+#--runDir {input.file}strelka2/\"$TUMOR_FIXED\".T;
+#{input.file}strelka2/\"$TUMOR_FIXED\".T/runWorkflow.py -g {params.mem} -m local;
+
+################################################################################
+################################################################################
+################################################################################
+# Annotation
+
+rule snpeff_muTect:
+    input:
+         tumor = FILE + 'muTect/{sample}.T.vcf', file = FILE
+    output:
+         FILE + 'muTect/{sample}.T.vcf.neo.ann'
+    threads: 1
+    params:
+         walltime="08:00", mem="24", name="sn.snpeff.mutect", threads="1"
+    shell:
+        "TUMOR={input.tumor}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.vcf\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}muTect/\"}}; "
+        "cd {input.file}muTect; "
+        "grep \"PASS\|ALT\" \"$TUMOR_FIXED\".T.vcf > \"$TUMOR_FIXED\".T.vcf.pass;"
+        "java -Xmx8G -jar snpEff.jar eff -a 13 -c ~/snpEff-3.5/snpEff.config \ "
+        "   -noStats -hgvs -canon -o txt -v hg19 \"$TUMOR_FIXED\".T.vcf.pass \ "
+        "   |perl ~/programs/snpEff-3.2/scripts/vcfEffOnePerLine.pl  > \"$TUMOR_FIXED\".T.vcf.neo.ann "
+
+rule snpeff_strelka:
+    input:
+         tumor = FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf', file = FILE
+    output:
+         FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf.neo.ann'
+    threads: 1
+    params:
+         walltime="08:00", mem="8", name="sn.snpeff.strelka", threads="1"
+    shell:
+        "TUMOR={input.tumor}; "
+        "TUMOR_FIXED=${{TUMOR#$\"{input.file}strelka/\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED%$\".T/results/passed.somatic.snvs.vcf\"}}; "
+        "cd {input.file}strelka/\"$TUMOR_FIXED\".T/results/; "
+        "for file in *.vcf; do \ "
+        "    file=${{file%$\".vcf\"}} "
+        "    java -Xmx8G -jar snpEff.jar -a 13 -c snpEff-3.5/snpEff.config \ "
+        "        -stats \"$TUMOR_FIXED\".T.\"$file\".summary.html -hgvs -canon -o txt -v GRCh37.75 \"$file\".vcf \ "
+        "     |perl ~/programs/snpEff-3.5/scripts/vcfEffOnePerLine.pl > \"$file\".vcf.neo.ann;  "
+        "done "
+        #\"     |perl ~/programs/snpEff-3.5/scripts/vcfEffOnePerLine.pl > \"$TUMOR_FIXED\".\"$file\".vcf.neo.ann  \" #TODO incorportate sample names into strelka output (instead of just parent dir folder)
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+#rule varscan2:
+#    input:
+#         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+#    output:
+#         FILE + 'varscan2/{sample}.T.vcf'
+#    threads: 1
+#    params:
+#         walltime="48:00", mem="32", name="sn.varscan2", threads="1"
+#    shell:
+#        "module add java/8.0; "
+#        'REGION=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X" "Y" "MT");'
+#        "for((i=0;i<${{#REGION[@]}};++i)); do \ "
+#        "   samtools mpileup -r \"${{REGION[$i]}}\" -A -f {input.ref} {input.normal} {input.tumor} |  "
+#        "   java -jar -Xmx{params.mem}G -jar $HOME/programs/VarScan.v2.4.3.jar somatic --output-snp {output}.\"${{REGION[$i]}}\" --output-vcf 1 --mpileup 1; "
+#        "done; "
+#        "cat {input.file}varscan2/{output}.* > {output} "
+#        "for((i=0;i<$\"${{#REGION[@]}}\";++i)); do rm {output}.\"${{REGION[$i]}}\"; done "
+
+#rule varscan2:
+#    input:
+#         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam',file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+#         #file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, normal = lambda wc: srn_paths[wc.sample, wc.region], tumor = lambda wc: srt_paths[wc.sample, wc.region]
+#    output:
+#         FILE + 'varscan2/{sample}.{params.region}.T.vcf'
+#    threads: 1
+#    params:
+#         walltime="32:00", mem="16", name="sn.varscan2", threads="1"
+#    shell:
+#        "module add java/8.0; "
+#        "samtools mpileup -r {params.region} -A -f {input.ref} {input.normal} {input.tumor} |  "
+#        "java -jar -Xmx{params.mem}G -jar $HOME/programs/VarScan.v2.4.3.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_1:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.1.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_1", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 1 -A -f {input.ref} {input.normal} {input.tumor} \|  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_2:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.2.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_2", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 2 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_3:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.3.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_3", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 3 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_4:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.4.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_4", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 4 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_5:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.5.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_5", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 5 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_6:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.6.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_6", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 6 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_7:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.7.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_7", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 7 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_8:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.8.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_8", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 8 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_9:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.9.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_9", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 9 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_10:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.10.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_10", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 10 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_11:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.11.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_11", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 11 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_12:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.12.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_12", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 12 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_13:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.13.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_13", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 13 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_14:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.14.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_14", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 14 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_15:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.15.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_15", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 15 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_16:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.16.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_16", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 16 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_17:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.17.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_17", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 17 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_18:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.18.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_18", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 18 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_19:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.19.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_19", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 19 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_20:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.20.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_20", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 20 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_21:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.21.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_21", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 21 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_22:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.22.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_22", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r 22 -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_X:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.X.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_X", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r X -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_Y:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.Y.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_Y", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r Y -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+rule varscan2_MT:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file=FILE, ref=REF, refs=REFS, varscan=VARSCAN, dbsnp138e = DBSNP138e
+    output:
+         FILE + 'varscan2/{sample}.MT.T.vcf'
+    params:
+         walltime="32:00", mem="16", name="sn.varscan2_MT", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.varscan} "
+        "samtools mpileup -r MT -A -f {input.ref} {input.normal} {input.tumor} |  "
+        "java -jar -Xmx{params.mem}G -jar /opt/VarScan.jar somatic --output-snp {output} --output-vcf 1 --mpileup 1; "
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+rule muTect_1:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.1.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_1", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 1 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".1.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".1.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".1.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_2:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.2.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_2", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 2 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".2.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".2.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".2.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_3:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.3.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_3", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 3 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".3.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".3.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".3.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_4:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.4.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_4", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 4 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".4.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".4.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".4.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_5:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.5.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_5", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 5 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".5.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".5.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".5.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_6:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.6.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_6", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 6 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".6.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".6.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".6.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_7:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.7.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_7", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 7 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".7.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".7.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".7.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_8:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.8.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_8", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 8 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".8.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".8.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".8.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_9:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.9.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_9", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 9 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".9.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".9.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".9.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_10:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.10.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_10", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 10 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".10.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".10.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".10.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_11:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.11.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_11", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 11 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".11.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".11.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".11.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_12:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.12.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_12", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 12 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".12.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".12.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".12.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_13:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.13.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_13", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 13 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".13.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".13.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".13.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_14:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.14.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_14", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 14 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".14.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".14.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".14.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_15:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.15.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_15", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 15 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".15.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".15.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".15.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_16:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.16.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_16", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 16 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".16.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".16.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".16.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_17:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.17.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_17", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 17 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".17.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".17.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".17.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_18:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.18.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_18", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 18 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".18.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".18.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".18.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_19:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.19.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_19", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 19 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".19.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".19.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".19.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_20:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.20.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_20", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 20 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".20.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".20.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".20.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_21:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.21.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_21", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 21 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".21.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".21.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".21.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_22:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.22.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_22", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L 22 "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".22.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".22.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".22.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_X:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.X.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_X", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L X "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".X.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".X.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".X.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_Y:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.Y.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_Y", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L Y "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".Y.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".Y.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".Y.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
+
+rule muTect_MT:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS,  dbsnp138 = DBSNP138e, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.MT.T.vcf'
+    threads: 1
+    params:
+         walltime="24:00", mem="32", name="sn.mt_MT", threads="1"
+    shell:
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%$\".T.pp.rg.bam\"}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}bqsr/\"}}; "
+        "NORMAL_FIXED=${{NORMAL%$\".N.pp.rg.bam\"}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED#$\"{input.file}bqsr/\"}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " -L MT "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp138} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".MT.T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".MT.T.call_stats.out "
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".MT.T.coverage.wig.txt "
+        " -rf BadCigar "
+        " --enable_extended_output "
+        " --downsampling_type NONE "
