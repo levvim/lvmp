@@ -2,32 +2,6 @@
 
 ### Preprocessing, mutation calling and filtering of human genomes based on a 'best practices' 2 caller pipeline. This pipeline utilizes a 2 caller setup (Mutect1, Strelka1) with annotation via snpEff.
 
-use dbsnp 138 (not excluding sites)
-look into change in illumina formatting
-
-should we use latest cosmic version (v68)?
-
-not use cutadapt for the moment (unless we know the sequences)
-
-
-
-samtools samtobam view include h (i.e. -Sbh)
-
-get older best practices from hoyos
-
-bwa, sort, then merge + sort at the same time inside markduplicates 
-
-then indelrealignment (coclean)
-
-bqsr 
-
-mutation calling:
-latest mutect1?
-latest strelka1? strelka2?
-
-
-
-
 SETUP: This pipeline requires the relevant singularity/docker images in addition to snakemake:
     
     singularity pull docker://opengenomicslab/mutect:latest
