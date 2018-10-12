@@ -1,0 +1,106 @@
+# Levi Mangarin 2018 Wolchok Lab
+# lvmp mut_msk Snakefile_prepro
+## Analysis pipeline for preprocessing bam with merged paired reads
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+HAPMAP= os.path.join(REFS + "hapmap_3.3.b37.vcf")
+OMNI= os.path.join(REFS + "1000G_omni2.5.b37.vcf")
+P1000G= os.path.join(REFS + "1000G_phase1.snps.high_confidence.b37.vcf")
+INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
+GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+
+#Illumina TruSeq adapters
+ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
+ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
+
+################################################################################
+rule all:
+    input: 
+        expand(FILE + 'fastq/{SAMPLE}.01.fastq', SAMPLE = sample) 
+
+################################################################################
+#Convert to fastq
+rule bamtofastq:
+    input:
+        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, tmp=TMP, outputdir = FILE + 'fastq/'
+    output:
+        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
+
+    params:
+        walltime="08:00", mem="48", name="sn.b2f", threads="1"
+    shell:
+        "module add singularity/2.4.2; "
+        "cd {input.file}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools sort -O bam {input.bam} -o {input.bam}.sort;"
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "samtools index {input.bam}.sort; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "RevertSam "
+        "I={input.bam}.sort  "
+        "O={input.bam}.reverted  "
+        "TMP_DIR={input.tmp}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "SamToFastq "
+        "I={input.bam}.reverted "
+        "OUTPUT_PER_RG=true "
+        "OUTPUT_DIR={input.outputdir} "
+        "VALIDATION_STRINGENCY=SILENT "
+        "TMP_DIR={input.tmp}; "
+        "rm {input.bam}.sort; "
+        "rm {input.bam}.reverted; "
+
+#        #"FASTQ={output.L1} "
+#        #"SECOND_END_FASTQ={output.L2}; "
+## revert bam
+#$java_path -Xmx8g -jar $picard_path RevertSam \       
+#    I=$bam \
+#    O=$output_path/reverted.bam \
+#    TMP_DIR=$tmp_path
+#
+## convert bam to pairs of FASTQs per readgroup
+#$java_path -Xmx8g -jar $picard_path SamToFastq \
+#    I=$output_path/reverted.bam \
+#    OUTPUT_PER_RG=true \
+#    OUTPUT_DIR=$output_path \
+#    TMP_DIR=$tmp_path \
+    VALIDATION_STRINGENCY=SILENT
+
+## removed intermediate reverted bam
+#rm $output_path/reverted.bam
+

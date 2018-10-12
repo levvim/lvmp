@@ -2,15 +2,43 @@
 
 ### Preprocessing, mutation calling and filtering of human genomes based on a 'best practices' 2 caller pipeline. This pipeline utilizes a 2 caller setup (Mutect1, Strelka1) with annotation via snpEff.
 
+use dbsnp 138 (not excluding sites)
+look into change in illumina formatting
+
+should we use latest cosmic version (v68)?
+
+not use cutadapt for the moment (unless we know the sequences)
+
+
+
+samtools samtobam view include h (i.e. -Sbh)
+
+get older best practices from hoyos
+
+bwa, sort, then merge + sort at the same time inside markduplicates 
+
+then indelrealignment (coclean)
+
+bqsr 
+
+mutation calling:
+latest mutect1?
+latest strelka1? strelka2?
+
+
+
+
 SETUP: This pipeline requires the relevant singularity/docker images in addition to snakemake:
     
     singularity pull docker://opengenomicslab/mutect:latest
     singularity pull docker://aarjunrao/cutadapt:1.9.1
     singularity pull docker://levim/dsprepro:1.1
     singularity pull docker://levim/hgmut:1.0
-    singularity pull docker://broadinstitute/picard:latest
-    singularity pull docker://biodckrdev/gatk:3.4
-    singularity pull docker://aarjunrao/mutect:1.1.7
+    singularity pull docker://levim/picard:2.11
+    singularity pull docker://broadinstitute/gatk3:3.8-1
+    singularity pull docker://levim/mutect:1.1.7
+    singularity pull docker://levim/samtools:1.9
+    singularity pull docker://levim/bwa:0.7.17
 
 This pipeline is called in 2 parts starting with fastq files: Preprocessing, then  mutation calling/filtering. Note that fastq files follow the nomenclature `sample.[T/N].lane.pair.fastq`, i.e. `sample1.T.L1.01.fastq`. An example workflow of the corresponding Snakefiles are as follows:
 
