@@ -84,23 +84,3 @@ rule bamtofastq:
         "TMP_DIR={input.tmp}; "
         "rm {input.bam}.sort; "
         "rm {input.bam}.reverted; "
-
-#        #"FASTQ={output.L1} "
-#        #"SECOND_END_FASTQ={output.L2}; "
-## revert bam
-#$java_path -Xmx8g -jar $picard_path RevertSam \       
-#    I=$bam \
-#    O=$output_path/reverted.bam \
-#    TMP_DIR=$tmp_path
-#
-## convert bam to pairs of FASTQs per readgroup
-#$java_path -Xmx8g -jar $picard_path SamToFastq \
-#    I=$output_path/reverted.bam \
-#    OUTPUT_PER_RG=true \
-#    OUTPUT_DIR=$output_path \
-#    TMP_DIR=$tmp_path \
-    VALIDATION_STRINGENCY=SILENT
-
-## removed intermediate reverted bam
-#rm $output_path/reverted.bam
-
