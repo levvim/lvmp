@@ -30,8 +30,7 @@ DBSNP = os.path.join(REFS + "dbsnp_138.b37.vcf")
 DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
 DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
 DBSNP132 = os.path.join(REFS + "dbsnp_132_b37.leftAligned.vcf")
-COSMIC = os.path.join(REFS + "b37_cosmic_v54_120711.vcf")
-COSMIC = os.path.join(REFS + "CosmicCodingMuts_b37.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts_v86.vcf")
 GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
 INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
 REGION_b37="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y MT".split()
@@ -49,44 +48,46 @@ GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
 #################################################################################
 rule all:
     input: 
-        expand(FILE + 'strelka2/{SAMPLE}.T/results/variants/somatic.snvs.vcf.gz', SAMPLE=sample),
+        expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE=sample),
         expand(FILE + 'muTect/{SAMPLE}.T.vcf', SAMPLE=sample),
+        #expand(FILE + 'bqsr/{SAMPLE}.pp.rg.bam', SAMPLE=sample)
  
 #################################################################################
-# Combine readgroups
-rule readgroups_bam:
-    input:
-        fastqrg = FILE + 'fastq/{sample}.L1.01.fastq.rg.txt', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD, scripts=SCRIPTS
-    output:
-        FILE + "bqsr/{sample}.pp.rg.bam"
-    threads: 1
-    params:
-        walltime="06:00", mem="16", name="sn.rg", threads="1"
-    shell:
-        "module add singularity; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-        "bash -c \"java -Xmx{params.mem}g -jar /usr/picard/picard.jar AddOrReplaceReadGroups "
-        "I={input.bam} "
-        "O={output} "
-        "TMP_DIR={input.tmpdir} "
-        "RGID=$(awk \"NR==4\" {input.fastqrg}) "
-        "RGLB=$(awk \"NR==8\" {input.fastqrg}) "
-        "RGPL=$(awk \"NR==2\" {input.fastqrg}) "
-        "RGPU=$(awk \"NR==6\" {input.fastqrg}) "
-        "RGSM=$(awk \"NR==7\" {input.fastqrg}) \"; "
-        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        "samtools index {output} "
+## Combine readgroups
+#rule readgroups_bam:
+#    input:
+#        fastqrg = FILE + 'fastq/{sample}.L1.01.fastq.rg.txt', bam = FILE + "bqsr/{sample}.pp.bam", tmpdir = FILE + "tmp/", file=FILE, refs=REFS, prepro=PREPRO, picard=PICARD, scripts=SCRIPTS
+#    output:
+#        FILE + "bqsr/{sample}.pp.rg.bam"
+#    threads: 1
+#    params:
+#        walltime="06:00", mem="16", name="sn.rg", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+#        "bash -c \"java -Xmx{params.mem}g -jar /usr/picard/picard.jar AddOrReplaceReadGroups "
+#        "I={input.bam} "
+#        "O={output} "
+#        "TMP_DIR={input.tmpdir} "
+#        "RGID=$(awk \"NR==4\" {input.fastqrg}) "
+#        "RGLB=$(awk \"NR==8\" {input.fastqrg}) "
+#        "RGPL=$(awk \"NR==2\" {input.fastqrg}) "
+#        "RGPU=$(awk \"NR==6\" {input.fastqrg}) "
+#        "RGSM=$(awk \"NR==7\" {input.fastqrg}) \"; "
+#        "singularity exec --bind {input.file}:{input.file} {input.prepro} "
+#        "samtools index {output} "
 
 #################################################################################
 # Mutation calling
 rule muTect:
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+         #normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
     output:
          FILE + 'muTect/{sample}.T.vcf'
     threads: 1
     params:
-         walltime="08:00", mem="32", name="sn.mutect", threads="1"
+         walltime="32:00", mem="32", name="sn.mutect", threads="1"
     shell:
         "module add singularity; "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
@@ -100,45 +101,22 @@ rule muTect:
         " --input_file:tumor {input.tumor} "
         " --input_file:normal {input.normal} "
         " --dbsnp {input.dbsnp} "
+        " --cosmic {input.cosmic} "
         " -vcf {input.file}muTect/\"$TUMOR_FIXED\".T.vcf "
         " --out {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.out "
         " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".T.coverage.wig.txt "
 
-rule muTect_rescue:
-    input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, vcf = FILE + 'muTect/{sample}.T.vcf', prepro=PREPRO, scripts=SCRIPTS
-    output:
-         FILE + 'muTect/{sample}.rescue.T.vcf'
-    threads: 1
-    params:
-         walltime="01:00", mem="4", name="sn.mtrescue", threads="1"
-    shell:
-        "TUMOR={input.tumor}; NORMAL={input.normal}; "
-        "TUMOR_FIXED=${{TUMOR%%.*}}; "
-        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
-        "NORMAL_FIXED=${{NORMAL%%.*}}; "
-        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.prepro} "
-        "python {input.scripts}/DMP_rescue.py "
-        "--vcf {input.vcf} "
-        "--txt {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.out"
-        "--tumor_id {input.file}fastq/\"$TUMOR_FIXED\".T.01 "
-        "--normal_id {input.file}fastq/\"$TUMOR_FIXED\".N.01 "
-        "--out {output} "
-
 rule strelka:
     input:
-         normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP,scripts=SCRIPTS
+         #normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP,scripts=SCRIPTS
+         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, scripts=SCRIPTS, refs=REFS, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
     output:
          FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf'
     threads: 4
     params:
-         walltime="24:00", mem="24", name="sn.strelka", threads="1"
+         walltime="24:00", mem="24", name="sn.strelka", threads="8"
     shell:
         'module add singularity; '
-        "singularity exec --bind {input.file}:{input.file} /data/wolchok/singularity/dsprepro-1.1.simg "
-        "bash -c \" "
-        " \" "
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
         "TUMOR_FIXED=${{TUMOR%%.*}}; "
         "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
@@ -146,19 +124,20 @@ rule strelka:
         "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
         'cd {input.file}strelka; '
         'rm -rf {input.file}strelka/\"$TUMOR_FIXED\".T/; ' 
-        "cp {input.scripts}/strelka_config_bwa_default.ini {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
-        "sed -i '13s/.*/isSkipDepthFilters = 1/' $output_path/config.ini; "
-        "{input.scripts}/configureStrelkaWorkflow.pl "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} /data/wolchok/singularity/dsprepro-1.1.simg "
+        "cp /strelka/etc/strelka_config_bwa_default.ini {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} /data/wolchok/singularity/dsprepro-1.1.simg "
+        "sed -i '13s/.*/isSkipDepthFilters = 1/' {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} --bind {input.refs}:{input.refs} /data/wolchok/singularity/dsprepro-1.1.simg "
+        "/strelka/bin/configureStrelkaWorkflow.pl "
         "    --normal={input.normal} "
         "    --tumor={input.tumor} "
         "    --ref={input.ref} "
         "    --config={input.file}strelka/\"$TUMOR_FIXED\".config.ini "
         "    --output-dir={input.file}strelka/\"$TUMOR_FIXED\".T/; "
         "cd {input.file}strelka/\"$TUMOR_FIXED\".T/; "
-        "sed -i -e 's/Filters = 0/Filters = 1/g' {input.file}strelka/\"$TUMOR_FIXED\".config.ini; "
-        "sed -i -e 's/Filters = 0/Filters = 1/g' {input.file}strelka/\"$TUMOR_FIXED\".T/config/run.config.ini; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} --bind {input.refs}:{input.refs} /data/wolchok/singularity/dsprepro-1.1.simg "
         "make -j {threads}; "
-        " \" "
 
 ################################################################################
 ################################################################################
@@ -181,6 +160,7 @@ rule strelka:
 #        "java -Xmx8G -jar snpEff.jar eff -a 13 -c ~/snpEff-3.5/snpEff.config \ "
 #        "   -noStats -hgvs -canon -o txt -v hg19 \"$TUMOR_FIXED\".T.vcf.pass \ "
 #        "   |perl ~/programs/snpEff-3.2/scripts/vcfEffOnePerLine.pl  > \"$TUMOR_FIXED\".T.vcf.neo.ann "
+#
 #
 #rule snpeff_strelka:
 #    input:

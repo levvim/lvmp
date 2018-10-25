@@ -55,23 +55,18 @@ rule all:
 #Convert to fastq
 rule bamtofastq:
     input:
-        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, tmp=TMP, outputdir = FILE + 'fastq/'
+        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, tmp= FILE + 'tmp/', outputdir = FILE + 'fastq/'
     output:
         L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
 
     params:
-        walltime="08:00", mem="48", name="sn.b2f", threads="1"
+        walltime="64:00", mem="16", name="sn.b2f", threads="1"
     shell:
-        "module add singularity/2.4.2; "
-        "cd {input.file}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "samtools sort -O bam {input.bam} -o {input.bam}.sort;"
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "samtools index {input.bam}.sort; "
+        "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
         "RevertSam "
-        "I={input.bam}.sort  "
+        "I={input.bam} "
         "O={input.bam}.reverted  "
         "TMP_DIR={input.tmp}; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
@@ -82,5 +77,5 @@ rule bamtofastq:
         "OUTPUT_DIR={input.outputdir} "
         "VALIDATION_STRINGENCY=SILENT "
         "TMP_DIR={input.tmp}; "
-        "rm {input.bam}.sort; "
         "rm {input.bam}.reverted; "
+

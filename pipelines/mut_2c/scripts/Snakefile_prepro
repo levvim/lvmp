@@ -16,6 +16,7 @@ else:
     RID=config["RID"]
 
 sample=SAMPLE
+
 ################################################################################
 # References
 
@@ -49,69 +50,86 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 
 ################################################################################
 rule all:
-input: 
+    input: 
         expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample) #fastq to preprocessed bam
+        #expand(FILE + 'markdup/{SAMPLE}.sort.md.bam', SAMPLE = sample) 
 
 #################################################################################
-## Trim
-rule gunzip:
-    input: 
-        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
-        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
-    output: 
-        fastq1=temp(FILE + 'fastq/{sample}.01.fastq'), 
-        fastq2=temp(FILE + 'fastq/{sample}.02.fastq')
-    params:
-        walltime="16:00", mem="4", name="sn.gz", threads="1"
-    shell:
-        "gunzip -k {input.fastq1};"
-        "gunzip -k {input.fastq2};"
-
-rule cutadapt:
-    input: 
-        fastq1=FILE + 'fastq/{sample}.01.fastq', 
-        fastq2=FILE + 'fastq/{sample}.02.fastq',
-        file=FILE, cutadapt=CUTADAPT, refs=REFS
-    output: 
-        fastq1=temp(FILE + 'fastq/{sample}.01.trim.fastq'),
-        fastq2=temp(FILE + 'fastq/{sample}.02.trim.fastq')
-    params:
-        walltime="12:00", mem="16", name="sn.cutadapt", adapter_r1=ADAPTER_R1, adapter_r2=ADAPTER_R2, threads="1"
-    shell:
-        "module add singularity; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.cutadapt} "
-        "cutadapt -a {params.adapter_r1} -A {params.adapter_r2} "
-        "-o {output.fastq1} -p {output.fastq2} "
-        "--overlap 10 "
-        "--minimum-length 20 "
-        "--quality-cutoff 3 "
-        "{input.fastq1} {input.fastq2}; "
+# Trim
+#rule gunzip:
+#    input: 
+#        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
+#        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
+#    output: 
+#        fastq1=temp(FILE + 'fastq/{sample}.01.fastq'), 
+#        fastq2=temp(FILE + 'fastq/{sample}.02.fastq')
+#    params:
+#        walltime="16:00", mem="4", name="sn.gz", threads="1"
+#    shell:
+#        "gunzip -k {input.fastq1};"
+#        "gunzip -k {input.fastq2};"
+#
+#rule cutadapt:
+#    input: 
+#        fastq1=FILE + 'fastq/{sample}.01.fastq', 
+#        fastq2=FILE + 'fastq/{sample}.02.fastq',
+#        file=FILE, cutadapt=CUTADAPT, refs=REFS
+#    output: 
+#        fastq1=temp(FILE + 'fastq/{sample}.01.trim.fastq'),
+#        fastq2=temp(FILE + 'fastq/{sample}.02.trim.fastq')
+#    params:
+#        walltime="12:00", mem="16", name="sn.cutadapt", adapter_r1=ADAPTER_R1, adapter_r2=ADAPTER_R2, threads="1"
+#    shell:
+#        "module add singularity; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.cutadapt} "
+#        "cutadapt -a {params.adapter_r1} -A {params.adapter_r2} "
+#        "-o {output.fastq1} -p {output.fastq2} "
+#        "--overlap 10 "
+#        "--minimum-length 20 "
+#        "--quality-cutoff 3 "
+#        "{input.fastq1} {input.fastq2}; "
         
-################################################################################
+###############################################################################
 # Align, convert to bam and sort
-rule bwa_mem:
+#rule bwa_mem_rgfq:
+#    input: fastq = FILE + 'fastq/{sample}.01.fastq', 
+#        R1 = FILE + 'fastq/{sample}.01.fastq', 
+#        R2 = FILE + 'fastq/{sample}.02.fastq',
+#        scripts = SCRIPTS, ref = REF, file = FILE, bwa=BWA, refs=REFS
+## to use cutadapt
+##    input: fastq = FILE + 'fastq/{sample}.01.fastq', 
+##        R1 = FILE + 'fastq/{sample}.01.trim.fastq', 
+##        R2 = FILE + 'fastq/{sample}.02.trim.fastq',
+##        scripts = SCRIPTS, ref = REF, file = FILE, prepro=PREPRO, refs=REFS
+#    output: temp(FILE + 'sam/{sample}.sam')
+#    params:
+#        walltime="36:00", mem="24", name="sn.bwa_mem", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bwa} "
+#        "bwa mem {input.ref} -R \"$readgroup\" -M -t {params.threads} -P -v 3  "
+#        "{input.R1} "
+#        "{input.R2} "
+#        "> {output} "
+
+rule bwa_mem_rgbam:
     input: fastq = FILE + 'fastq/{sample}.01.fastq', 
         R1 = FILE + 'fastq/{sample}.01.fastq', 
         R2 = FILE + 'fastq/{sample}.02.fastq',
+        rg = FILE + 'fastq/{sample}.01.fastq.rg.txt',
         scripts = SCRIPTS, ref = REF, file = FILE, bwa=BWA, refs=REFS
-# to use cutadapt
-#    input: fastq = FILE + 'fastq/{sample}.01.fastq', 
-#        R1 = FILE + 'fastq/{sample}.01.trim.fastq', 
-#        R2 = FILE + 'fastq/{sample}.02.trim.fastq',
-#        scripts = SCRIPTS, ref = REF, file = FILE, prepro=PREPRO, refs=REFS
     output: temp(FILE + 'sam/{sample}.sam')
     params:
         walltime="36:00", mem="24", name="sn.bwa_mem", threads="1"
     shell:
         "module add singularity; "
-        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
-        "readgroup=\"@RG\\tID:\"$(awk NR==4 {input.fastq}.rg.txt)\"\\tLB:\"$(awk NR==8 {input.fastq}.rg.txt)\"\\tPL:\"$(awk NR==2 {input.fastq}.rg.txt)\"\\tPU:\"$(awk NR==6 {input.fastq}.rg.txt)\"\\tSM:\"$(awk NR==7 {input.fastq}.rg.txt)\"\"; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
+        "readgroup=\"$(cat {input.rg})\"; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bwa} "
         "bwa mem {input.ref} -R \"$readgroup\" -M -t {params.threads} -P -v 3  "
         "{input.R1} "
         "{input.R2} "
         "> {output} "
-
 #################################################################################
 rule samtobam:
     input: sam=FILE + 'sam/{sample}.sam', file=FILE, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
@@ -126,7 +144,6 @@ rule samtobam:
 rule sort:
     input:
          bam=FILE + 'bam/{sample}.bam', file=FILE, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS #skip merge step if only one lane 
-         #bam=FILE + 'merge/{sample}.bam', file=FILE, prepro=PREPRO, refs=REFS
     output:
          FILE + 'sort/{sample}.sort.bam'
     params:
@@ -138,17 +155,16 @@ rule sort:
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
         "samtools index {output} "
 
-################################################################################
+#################################################################################
 # Merge lanes together and sort
 rule markduplicates:
     input:
-         #bam = FILE + 'indelrealign/{sample}.sort.ir.bam', tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
-        bam = expand(FILE + 'sort/{{sample}}.{RUN}.bam', RUN=RID), tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+        bam = expand(FILE + 'sort/{{sample}}.{RUN}.sort.bam', RUN=RID), tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
     output:
          FILE + 'markdup/{sample}.sort.md.bam'
     params: 
-        walltime="96:00", mem="36", name="sn.md", threads="1"
-    shell:
+        walltime="96:00", mem="16", name="sn.md", threads="1"
+    run:
         inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
         shell("module add singularity; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
@@ -157,24 +173,26 @@ rule markduplicates:
         "{inputstr} "
         "O={output} "
         "METRICS_FILE={output}.metrics.txt "
-        "SORT_ORDER=coordinate  "
         "CREATE_INDEX=true "
-        "MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=100000 "
         "VALIDATION_STRINGENCY=SILENT "
         "TMP_DIR={input.tmpdir}; " )
+        #"MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=100000 "
 
 ###################################################################################
 #Indel Realignment, Base Square Recalibration, MarkDuplicates
 rule index_and_realign_info:
     input:
-        #bam = FILE + 'markdup/{sample}.sort.bam', ref = REF, dbsnp = DBSNP138, gold=GOLD_INDELS, file=FILE, gatk=GATK, refs=REFS # for single samples
-        bam_normal = FILE + 'markdup/{sample}.N.sort.md.bam', bam_tumor= FILE + 'markdup/{sample}.T.sort.md.bam', ref = REF, p1000g=P1000G, gold=GOLD_INDELS, file=FILE, gatk=GATK, refs=REFS 
+        bam_normal = FILE + 'markdup/{sample}.N.sort.md.bam', bam_tumor= FILE + 'markdup/{sample}.T.sort.md.bam', ref = REF, p1000g=P1000G, gold=GOLD_INDELS, file=FILE, gatk=GATK, samtools=SAMTOOLS, refs=REFS 
     output:
         temp(FILE + 'indelrealign/{sample}.T.sort.md.intervals')
     params:
         walltime="24:00", mem="24", name="sn.ri", threads="4"
     shell:
         "module add singularity; "
+        "singularity exec --bind  {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools index {input.bam_normal}; "
+        "singularity exec --bind  {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools index {input.bam_tumor}; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
         "java -Xmx{params.mem}G -jar /usr/GenomeAnalysisTK.jar "
         "-T RealignerTargetCreator "
@@ -188,7 +206,6 @@ rule index_and_realign_info:
 
 rule realign_bam:
     input:
-        #bam = FILE + 'sort/{sample}.sort.bam', ref = REF, intervals = FILE + 'indelrealign/{sample}.sort.intervals', dbsnp = DBSNP138, gold = GOLD_INDELS, file=FILE, gatk=GATK, prepro=PREPRO, refs=REFS # without tumor/normal matching
         bam_normal = FILE + 'markdup/{sample}.N.sort.md.bam', bam_tumor= FILE + 'markdup/{sample}.T.sort.md.bam', ref = REF, intervals = FILE + 'indelrealign/{sample}.T.sort.md.intervals', p1000g = P1000G, gold = GOLD_INDELS, file=FILE, gatk=GATK, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
     output:
         bam_normal = temp(FILE + 'indelrealign/{sample}.N.sort.md.ir.bam'), bam_tumor= temp(FILE + 'indelrealign/{sample}.T.sort.md.ir.bam'), map= temp(FILE + 'indelrealign/{sample}.map')
@@ -198,8 +215,8 @@ rule realign_bam:
         "TUMOR={input.bam_tumor}; NORMAL={input.bam_normal}; "
         "TUMOR_FIXED=${{TUMOR##*/}}; "
         "NORMAL_FIXED=${{NORMAL##*/}}; "
-        "echo \"$NORMAL_FIXED\\t{output.bam_normal}\" > {output.map}; " 
-        "echo \"$TUMOR_FIXED\\t{output.bam_tumor}\" >> {output.map}; " 
+        "echo -e \"$NORMAL_FIXED\\t{output.bam_normal}\" > {output.map}; " 
+        "echo -e \"$TUMOR_FIXED\\t{output.bam_tumor}\" >> {output.map}; " 
         "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
         "java -Xmx{params.mem}G -jar /usr/GenomeAnalysisTK.jar "
@@ -208,20 +225,22 @@ rule realign_bam:
         "-I {input.bam_normal} "
         "-I {input.bam_tumor} "
         "-nt {threads} "
-        "--known {input.p1000g} "
-        "--known {input.gold} "
+        "-known {input.p1000g} "
+        "-known {input.gold} "
         "--maxReadsInMemory 3000000 "
         "-targetIntervals {input.intervals} "
         "-nWayOut {output.map}; "
         "singularity exec --bind  {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
-        "samtools index {output}"
+        "samtools index {output.bam_normal};"
+        "singularity exec --bind  {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools index {output.bam_tumor};"
 
 
 ################################################################################
 # BQSR
 rule baserecalibrator:
     input:
-        bam = FILE + 'markdup/{sample}.sort.ir.md.bam', ref = REF,  dbsnp = DBSNP138, gold = GOLD_INDELS, hapmap=HAPMAP, omni = OMNI, p1000g = P1000G, file=FILE, gatk=GATK, refs=REFS
+        bam = FILE + 'indelrealign/{sample}.sort.md.ir.bam', ref = REF,  dbsnp = DBSNP138, gold = GOLD_INDELS, hapmap=HAPMAP, omni = OMNI, p1000g = P1000G, file=FILE, gatk=GATK, refs=REFS
     output:
         temp(FILE + 'bqsr/{sample}.sort.ir.md.bam.recal_data.table')
     params:
@@ -241,7 +260,7 @@ rule baserecalibrator:
 
 rule printreads:
     input:
-        bam = FILE + 'markdup/{sample}.sort.ir.md.bam', br = FILE + 'bqsr/{sample}.sort.ir.md.bam.recal_data.table', ref = REF,  dbsnp = DBSNP138, file = FILE, gatk=GATK, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+        bam = FILE + 'indelrealign/{sample}.sort.md.ir.bam', br = FILE + 'bqsr/{sample}.sort.ir.md.bam.recal_data.table', ref = REF,  dbsnp = DBSNP138, file = FILE, gatk=GATK, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
     output:
         FILE + 'bqsr/{sample}.pp.bam'
     params:
