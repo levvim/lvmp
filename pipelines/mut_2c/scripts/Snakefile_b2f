@@ -25,7 +25,8 @@ FILE=config["file"]
 REFS=config["refs"]
 SCRIPTS=config["scripts"]
 
-REF = os.path.join(REFS + "human_g1k_b37.fasta")
+#REF = os.path.join(REFS + "human_g1k_b37.fasta")
+REF = os.path.join(REFS + "human_g1k_v37_decoy.fasta")
 DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
 DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
 COSMIC = os.path.join(REFS + "CosmicCodingMuts.vcf")
@@ -40,11 +41,7 @@ CONTAINERS=config["containers"]
 PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
 CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
 PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
-GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
-
-#Illumina TruSeq adapters
-ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
-ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
+GATK=os.path.join(CONTAINERS + "gatk3-3.8-1.simg")
 
 ################################################################################
 rule all:
@@ -68,6 +65,9 @@ rule bamtofastq:
         "RevertSam "
         "I={input.bam} "
         "O={input.bam}.reverted  "
+        "SANITIZE=true "
+        "VALIDATION_STRINGENCY=SILENT "
+        "MAX_DISCARD_FRACTION=100 "
         "TMP_DIR={input.tmp}; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
         "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "

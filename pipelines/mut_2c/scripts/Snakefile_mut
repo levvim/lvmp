@@ -25,11 +25,8 @@ REFS=config["refs"]
 SCRIPTS=config["scripts"]
 
 #refs for using grch37 hg19 (broad)
-REF = os.path.join(REFS + "human_g1k_b37.fasta")
-DBSNP = os.path.join(REFS + "dbsnp_138.b37.vcf")
+REF = os.path.join(REFS + "human_g1k_v37_decoy.fasta")
 DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
-DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
-DBSNP132 = os.path.join(REFS + "dbsnp_132_b37.leftAligned.vcf")
 COSMIC = os.path.join(REFS + "CosmicCodingMuts_v86.vcf")
 GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
 INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
@@ -39,18 +36,15 @@ region=REGION_b37
 # Containers
 CONTAINERS=config["containers"]
 PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
-CUTADAPT=os.path.join(CONTAINERS + "cutadapt-1.9.1.simg")
 PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
-MUTECT=os.path.join(CONTAINERS + "mutect-latest.simg")
-HGMUT=os.path.join(CONTAINERS + "hgmut-1.0.simg")
-GATK=os.path.join(CONTAINERS + "gatk-3.4.simg")
+MUTECT=os.path.join(CONTAINERS + "mutect1-1.1.7.simg")
+GATK=os.path.join(CONTAINERS + "gatk3-3.8-1.simg")
 
 #################################################################################
 rule all:
     input: 
         expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE=sample),
         expand(FILE + 'muTect/{SAMPLE}.T.vcf', SAMPLE=sample),
-        #expand(FILE + 'bqsr/{SAMPLE}.pp.rg.bam', SAMPLE=sample)
  
 #################################################################################
 ## Combine readgroups
@@ -81,10 +75,10 @@ rule all:
 # Mutation calling
 rule muTect:
     input:
-         #normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
-         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, ref = REF, dbsnp = DBSNP138, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
     output:
          FILE + 'muTect/{sample}.T.vcf'
+         #temp(expand(FILE + 'muTect/{{sample}}.{region}.T.vcf', region=REGION_b37))
     threads: 1
     params:
          walltime="32:00", mem="32", name="sn.mutect", threads="1"
@@ -103,18 +97,17 @@ rule muTect:
         " --dbsnp {input.dbsnp} "
         " --cosmic {input.cosmic} "
         " -vcf {input.file}muTect/\"$TUMOR_FIXED\".T.vcf "
-        " --out {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.out "
-        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".T.coverage.wig.txt "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.txt " 
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".T.coverage.wig.txt; "
 
 rule strelka:
     input:
-         #normal = FILE + 'bqsr/{sample}.N.pp.rg.bam', tumor = FILE + 'bqsr/{sample}.T.pp.rg.bam', file = FILE, ref = REF, intervals = INTERVALS, dbsnp = DBSNP,scripts=SCRIPTS
-         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, scripts=SCRIPTS, refs=REFS, ref = REF, intervals = INTERVALS, dbsnp = DBSNP
+         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, scripts=SCRIPTS, refs=REFS, ref = REF, intervals = INTERVALS, dbsnp = DBSNP138
     output:
          FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf'
     threads: 4
     params:
-         walltime="24:00", mem="24", name="sn.strelka", threads="8"
+         walltime="24:00", mem="8", name="sn.strelka", threads="12"
     shell:
         'module add singularity; '
         "TUMOR={input.tumor}; NORMAL={input.normal}; "
@@ -124,64 +117,22 @@ rule strelka:
         "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
         'cd {input.file}strelka; '
         'rm -rf {input.file}strelka/\"$TUMOR_FIXED\".T/; ' 
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} /data/wolchok/singularity/dsprepro-1.1.simg "
-        "cp /strelka/etc/strelka_config_bwa_default.ini {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} /data/wolchok/singularity/dsprepro-1.1.simg "
+        "cp $HOME/programs/strelka_workflow-1.0.15/etc/strelka_config_bwa_default.ini {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
         "sed -i '13s/.*/isSkipDepthFilters = 1/' {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} --bind {input.refs}:{input.refs} /data/wolchok/singularity/dsprepro-1.1.simg "
-        "/strelka/bin/configureStrelkaWorkflow.pl "
+        "$HOME/programs/strelka_workflow-1.0.15/bin/configureStrelkaWorkflow.pl "
         "    --normal={input.normal} "
         "    --tumor={input.tumor} "
         "    --ref={input.ref} "
         "    --config={input.file}strelka/\"$TUMOR_FIXED\".config.ini "
         "    --output-dir={input.file}strelka/\"$TUMOR_FIXED\".T/; "
         "cd {input.file}strelka/\"$TUMOR_FIXED\".T/; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} --bind {input.refs}:{input.refs} /data/wolchok/singularity/dsprepro-1.1.simg "
         "make -j {threads}; "
 
 ################################################################################
 ################################################################################
-## Annotation
-#
-#rule snpeff_muTect:
-#    input:
-#         tumor = FILE + 'muTect/{sample}.T.vcf', file = FILE
-#    output:
-#         FILE + 'muTect/{sample}.T.vcf.neo.ann'
-#    threads: 1
-#    params:
-#         walltime="08:00", mem="24", name="sn.snpeff.mutect", threads="1"
-#    shell:
-#        "TUMOR={input.tumor}; "
-#        "TUMOR_FIXED=${{TUMOR%$\".T.vcf\"}}; "
-#        "TUMOR_FIXED=${{TUMOR_FIXED#$\"{input.file}muTect/\"}}; "
-#        "cd {input.file}muTect; "
-#        "grep \"PASS\|ALT\" \"$TUMOR_FIXED\".T.vcf > \"$TUMOR_FIXED\".T.vcf.pass;"
-#        "java -Xmx8G -jar snpEff.jar eff -a 13 -c ~/snpEff-3.5/snpEff.config \ "
-#        "   -noStats -hgvs -canon -o txt -v hg19 \"$TUMOR_FIXED\".T.vcf.pass \ "
-#        "   |perl ~/programs/snpEff-3.2/scripts/vcfEffOnePerLine.pl  > \"$TUMOR_FIXED\".T.vcf.neo.ann "
-#
-#
-#rule snpeff_strelka:
-#    input:
-#         tumor = FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf', file = FILE
-#    output:
-#         FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf.neo.ann'
-#    threads: 1
-#    params:
-#         walltime="08:00", mem="8", name="sn.snpeff.strelka", threads="1"
-#    shell:
-#        "TUMOR={input.tumor}; "
-#        "TUMOR_FIXED=${{TUMOR#$\"{input.file}strelka/\"}}; "
-#        "TUMOR_FIXED=${{TUMOR_FIXED%$\".T/results/passed.somatic.snvs.vcf\"}}; "
-#        "cd {input.file}strelka/\"$TUMOR_FIXED\".T/results/; "
-#        "for file in *.vcf; do \ "
-#        "    file=${{file%$\".vcf\"}} "
-#        "    java -Xmx8G -jar snpEff.jar -a 13 -c snpEff-3.5/snpEff.config \ "
-#        "        -stats \"$TUMOR_FIXED\".T.\"$file\".summary.html -hgvs -canon -o txt -v GRCh37.75 \"$file\".vcf \ "
-#        "     |perl ~/programs/snpEff-3.5/scripts/vcfEffOnePerLine.pl > \"$file\".vcf.neo.ann;  "
-#        "done "
-#
+################################################################################
+################################################################################
+################################################################################
 ################################################################################
 ################################################################################
 ################################################################################
