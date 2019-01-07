@@ -6,9 +6,9 @@
 #
 #   curl https://raw.githubusercontent.com/levvim/lvmp/master/pipelines/hla//scripts/cnv_COMPASS_aws.sh > $HOME/cnv_COMPASS_aws.sh 
 #
-#   aws configure set aws_access_key_id AKIAJWEETMCKYNICPXZA                                                     
-#   aws configure set aws_secret_access_key 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                             
-#   aws configure set default.region us-east-1                                                                   
+#   aws configure set aws_access_key_id ERSDFSFSD
+#   aws configure set aws_secret_access_key DSFSDFDSFSDDS
+#   aws configure set default.region SDFSDF
 #
 #   aws s3 cp $m $HOME/mut_2c_metadata.csv                                                                       
 #   aws s3 cp $s $HOME/mut_2c_samples.csv                                                                        
@@ -85,7 +85,7 @@ aws s3 cp s3://immunoseqvault/COMPUTE/SRA/Alex/prj_16485.ngc /home/ec2-user/prj_
 
 ################################################################################
 ## Configure project folders and samples
-cd /home/
+cd /home/"$USER"/
 mkdir -p /home/"$USER"/PROJECT/
 mkdir -p /home/"$USER"/SCRIPTS/
 mkdir -p /home/"$USER"/CONTAINERS/
@@ -107,7 +107,7 @@ aws s3 cp s3://immunoseqvault/COMPUTE/Exomeseq/Refs/GRCh37hg19/dbsnp_138.b37.vcf
 aws s3 cp s3://immunoseqvault/COMPUTE/Exomeseq/Images/samtools-1.6.simg "$CONTAINERS"/samtools-1.6.simg
 aws s3 cp s3://immunoseqvault/COMPUTE/Exomeseq/Images/run_facets.R "$SCRIPTS"/run_facets.R
 
-aws s3 cp s3://immunoseqexternal/Collab_BG/COMPASS/sampletable_compass.csv /home/sampletable_compass.csv
+aws s3 cp s3://immunoseqexternal/Collab_BG/COMPASS/sampletable_compass.csv $HOME/sampletable_compass.csv
 sed -i 's/\r$//' $HOME/sampletable_compass.csv  
 
 ################################################################################
@@ -165,90 +165,13 @@ $PROJECT/facets/"$SAMPLE"_facets_output.txt
 aws s3 cp $PROJECT/facets/"$SAMPLE".csv.gz s3://immunoseqexternal/Collab_BG/COMPASS/WES/CNV/"$SAMPLE".csv.gz 
 aws s3 cp $PROJECT/facets/"$SAMPLE"_facets_output.txt s3://immunoseqexternal/Collab_BG/COMPASS/WES/CNV/"$SAMPLE"_facets_output.csv.gz 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
