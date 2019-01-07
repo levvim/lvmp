@@ -34,67 +34,89 @@ OPTITYPE_REF= os.path.join(REFS + "optitype_hla_reference_dna.fasta")
 CONTAINERS=config["containers"]
 PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
 OPTITYPE=os.path.join(CONTAINERS + "optitype-writable.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+#OPTITYPE=os.path.join(CONTAINERS + "optitype-release-v1.3.1.simg")
 
 ################################################################################
 rule all:
-    input: expand(FILE + "optitype/{SAMPLE}/{SAMPLE}.tsv", SAMPLE = sample)
-    #input: expand(FILE + "fastq/{SAMPLE}.fastq", SAMPLE = sample)
+    #input: expand(FILE + "optitype/{SAMPLE}.hla", SAMPLE = sample),
+    input: expand(FILE + "fastq/{SAMPLE}_1.fastq.gz.done", SAMPLE = sample)
 
 ################################################################################
-#rule dl_sam:
-#    input:
-#        file=FILE, prepro=PREPRO
-#    output:
-#        sam=temp(FILE + 'sam/{sample}.sam'),
-#    params:
-#        walltime="4:00", mem="4", name="sn.sra", threads="1", SID='{sample}'
-#    shell:
-#        "module add singularity; "
-#        "cd {input.file}sam; "
-#        "{input.file}/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/vdb-config --import {input.file}/compass/prj_16485.ngc . ; "
-#        "{input.file}/PROGRAMS/sratoolkit.2.9.0-centos_linux64/bin/sam-dump.2.9.0 -s {params.SID} "
-#        "--aligned-region 6:28510120-33480577 "
-#        "> {output} "
-
-rule bamtofastq:
+rule dl_fastq:
     input:
-        bam=FILE + 'sam/{sample}.sam', file=FILE, prepro=PREPRO, refs=REFS
+        file=FILE, prepro=PREPRO
     output:
-        L1 = FILE + 'fastq/{sample}.fastq'
+        L1 = FILE + 'fastq/{sample}_1.fastq',
+        L2 = FILE + 'fastq/{sample}_2.fastq'
     params:
-        walltime="12:00", mem="24", name="sn.b2f", threads="1"
+        walltime="24:00", mem="16", name="sn.sra", threads="1", SID='{sample}'
     shell:
-        "module add singularity; "
-        "cd {input.file}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "samtools view -bS {input.bam} -o {input.bam}.bam; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "samtools sort -O bam {input.bam}.bam -o {input.bam}.sort.bam; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "samtools index {input.bam}.sort.bam; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.prepro} "
-        "/bedtools2/bin/bedtools bamtofastq -i {input.bam}.sort.bam -fq {output.L1}; "
-        "rm {input.bam}.bam; "
-        "rm {input.bam}.sort.bam; "
+        "cd {input.file}/sam; "
+        "{input.file}PROGRAMS/sratoolkit.2.9.2-centos_linux64/bin/fasterq-dump.2.9.2 "
+        "--split-files "
+        "{params.SID} "
+        "-O ../fastq/; "
 
 rule optitype:
     input:
-         L1 = FILE + 'fastq/{sample}.fastq', outdir=FILE + 'optitype', file=FILE, optitype=OPTITYPE
+         L1 = FILE + 'fastq/{sample}_1.fastq',
+         L2 = FILE + 'fastq/{sample}_2.fastq', 
+         outdir=FILE + 'optitype', file=FILE, optitype=OPTITYPE, scripts=SCRIPTS
     output:
-         FILE + 'optitype/{sample}/{sample}.tsv'
+         hla = FILE + 'optitype/{sample}.hla'
     params:
-        walltime="12:00", mem="32", name="sn.opti", threads="1"
+        walltime="16:00", mem="64", name="sn.opti", threads="1"
     shell:
         "module add singularity; "
-        "SAMPLE={input.L1};  "
-        "SAMPLE=${{SAMPLE%%.*}}; "
-        "SAMPLE=${{SAMPLE##*/}}; "
+        "i={input.L1}; ifix=${i%_*}; ifix=${ifix##*/}; "
+        "cd {input.file}; "
         "singularity exec --bind {input.file}:{input.file} {input.optitype} "
-        "python /usr/local/bin/OptiType/OptiTypePipeline.py --input {input.L1} --dna -v --outdir {input.outdir}/\"$SAMPLE\"; "
-        "touch {output}; " 
+        "    python /usr/local/bin/OptiType/OptiTypePipeline.py "
+        "            --input {input.L1} {input.L2} "
+        "            --dna "
+        "            --verbose "
+        "            --outdir $FILE/optitype/\"$ifix\" ;"
+        "cd {input.file}/optitype/\"$ifix\"; "
+        "cp \"$(find -name \"*result*\" | head -n 1 )\" {input.file}/optitype/\"$ifix\".tsv ; "
+        "cd {input.file}/optitype/; "
+        "{input.scripts}/optitype_format -i {input.file}/optitype/\"$ifix\".tsv -o {output.hla};"
 
-#        "&& cd {input.outdir}/\"$SAMPLE\" "
-#        "&& cp \"$(find -name \"\*result\*\" | head -n 1 )\" {output}; "
+
+rule gzip_fastq:
+    input:
+        file=FILE, prepro=PREPRO,
+        L1=temp(FILE + 'fastq/{sample}_1.fastq'),
+        L2=temp(FILE + 'fastq/{sample}_2.fastq'),
+        hla = FILE + 'optitype/{sample}.hla'
+    output:
+        L1=FILE + 'fastq/{sample}_1.fastq.gz',
+        L2=FILE + 'fastq/{sample}_2.fastq.gz'
+    params:
+        walltime="12:00", mem="8", name="sn.gzip_fastq", threads="1", SID='{sample}'
+    shell:
+        "gzip < {input.L1} > {output.L1}; "
+        "gzip < {input.L2} > {output.L2}; "
+
+rule awsup:
+    input:
+        file=FILE, prepro=PREPRO,
+        L1=temp(FILE + 'fastq/{sample}_1.fastq.gz'),
+        L2=temp(FILE + 'fastq/{sample}_2.fastq.gz'),
+        fL1=temp(FILE + 'fastq/{sample}_1.fastq'),
+        fL2=temp(FILE + 'fastq/{sample}_2.fastq')
+    output:
+        L1=FILE + 'fastq/{sample}_1.fastq.gz.done',
+        L2=FILE + 'fastq/{sample}_2.fastq.gz.done'
+    params:
+        walltime="12:00", mem="8", name="sn.awsup", threads="1", SID='{sample}'
+    shell:
+        "~/aws/miniconda3/bin/aws s3 cp {input.L1} \"s3://immunoseqexternal/Collab_BG/COMPASS/WES/{input.L1}\" > {output.L1}; "
+        "~/aws/miniconda3/bin/aws s3 cp {input.L2} \"s3://immunoseqexternal/Collab_BG/COMPASS/WES/{input.L2}\" > {output.L2}; "
+        "rm {input.L1}; "
+        "rm {input.L2}; "
+        "rm {input.fL1}; "
+        "rm {input.fL2}; "
 
 ################################################################################
 ################################################################################
