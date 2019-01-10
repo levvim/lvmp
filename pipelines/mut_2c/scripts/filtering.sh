@@ -22,15 +22,15 @@ snpeff_path=/home/mangaril/programs/snpEff/snpEff.jar
 #mutect_results=$filtering_path/mutect_stats.txt
 
 ################################################################################
-# create mutect regions 
-#cd $FILE/muTect/
-#for i in *.call_stats.txt; do echo $i; ifix=${i%%.*};ifix=${ifix##*/};
-#    cp $i "$FILE"/vcf/"$ifix".T.call_stats.txt
-#    cat "$i" | grep -v -e "#" -e "judgement" |\
-#        grep -v -e "#" -e "GL0" -e "NC_007605" -e "hs37d5" | \
-#        awk -v OFS='\t' '{ print $1, $2, $2 }' > "$FILE"/vcf/"$ifix".mutect_regions.txt
-#    sed -i '1d' "$FILE"/vcf/"$ifix".mutect_regions.txt
-#done
+ #create mutect regions 
+cd $FILE/muTect/
+for i in *.call_stats.txt; do echo $i; ifix=${i%%.*};ifix=${ifix##*/};
+    cp $i "$FILE"/vcf/"$ifix".T.call_stats.txt
+    cat "$i" | grep -v -e "#" -e "judgement" |\
+        grep -v -e "#" -e "GL0" -e "NC_007605" -e "hs37d5" | \
+        awk -v OFS='\t' '{ print $1, $2, $2 }' > "$FILE"/vcf/"$ifix".mutect_regions.txt
+    sed -i '1d' "$FILE"/vcf/"$ifix".mutect_regions.txt
+done
 
 # rename and organize strelka output into vcf folder
 cd $FILE/strelka/

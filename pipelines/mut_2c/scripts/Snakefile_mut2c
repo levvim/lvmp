@@ -1,0 +1,482 @@
+# Levi Mangarin 2018 Wolchok Lab
+# lvmp mut_2c Snakefile_prepro
+## Analysis pipeline for preprocessing fastq files, calibrated for GRCh37 analysis
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+
+print(SAMPLE)
+print(RID)
+################################################################################
+# Generate list of samples given RID
+
+SAMPLEWITHRG=[]
+
+for s, r in zip(SAMPLE, RID):
+    r=int(r[-1:])
+    rg=list(range(r+1))
+    rg.pop(0)
+    for i in rg:
+        out = s + "." + "L" + str(i)
+        SAMPLEWITHRG.append(out)
+
+print(SAMPLEWITHRG)
+def RGfromS (sid, srg):
+    rg=[i.split('.', 2)[2] for i in srg]
+    print(rg)
+    s1=[i.split('.', 2)[0] for i in srg]
+    s2=[i.split('.', 2)[1] for i in srg]
+    s=['.'.join((first,second)) for first, second in zip(s1, s2)]
+
+    print(s)
+
+    rid=[]
+    for i in range(0,len(srg)):
+        if s[i] == sid:
+            rid.append(rg[i])
+    print(rid)
+    return rid
+
+SAMPLENOTN=[s.replace('.T', '') for s in sample]
+SAMPLENOTN=[s.replace('.N', '') for s in SAMPLENOTN]
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_v37_decoy.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts_v86.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+P1000G= os.path.join(REFS + "1000G_phase1.indels.b37.vcf")
+INTERVALS= os.path.join(REFS + "Broad.human.exome.b37.interval_list")
+REGION_b37="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y MT".split()
+region=REGION_b37
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
+GATK=os.path.join(CONTAINERS + "gatk3-3.8-1.simg")
+BWA=os.path.join(CONTAINERS + "bwa-0.7.17.simg")
+SAMTOOLS=os.path.join(CONTAINERS + "samtools-1.6.simg")
+#MUTECT=os.path.join(CONTAINERS + "mutect1-1.1.7.simg")
+MUTECT=os.path.join(CONTAINERS + "mutect-latest.simg")
+
+################################################################################
+rule all:
+    input: 
+        expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample), 
+        #expand(FILE + 'sort/{SAMPLE}.sort.bam', SAMPLE = SAMPLEWITHRG),
+        expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE = SAMPLENOTN) ,
+        expand(FILE + 'muTect/{SAMPLE}.T.vcf', SAMPLE = SAMPLENOTN),
+        expand(FILE + 'vcf/{SAMPLE}.ann.vcf', SAMPLE = SAMPLENOTN)
+
+################################################################################
+# Convert to fastq
+rule bamtofastq:
+    input:
+        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, tmp= FILE + 'tmp/', outputdir = FILE + 'fastq/'
+    output:
+        #L1 = dynamic(FILE + 'fastq/{sample}.{L}.01.fastq'), L2 = FILE + 'fastq/{sample}.02.fastq'
+        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
+    params:
+        walltime="64:00", mem="16", name="sn.b2f", threads="1"
+    shell:
+        "module add singularity; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED%%.*}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "mkdir -p {input.outputdir}/\"$SAMPLE_FIXED\"/ ; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "RevertSam "
+        "I={input.bam} "
+        "O={input.bam}.reverted  "
+        "SANITIZE=true "
+        "VALIDATION_STRINGENCY=SILENT "
+        "MAX_DISCARD_FRACTION=100 "
+        "TMP_DIR={input.tmp}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "SamToFastq "
+        "I={input.bam}.reverted "
+        "OUTPUT_PER_RG=true "
+        "OUTPUT_DIR={input.outputdir}/\"$SAMPLE_FIXED\"/ "
+        "VALIDATION_STRINGENCY=SILENT "
+        "TMP_DIR={input.tmp}; "
+        "rm {input.bam}.reverted; "
+        "cd {input.outdir}/\"$SAMPLE_FIXED\"/;"
+        "for i in *.fastq; do mv $i ../\"$SAMPLE_FIXED\".$i; done; "
+        "cd {input.outdir}; "
+        "i=1; "
+        "for file1 in \"$SAMPLE_FIXED\".*.01.fq; do "
+        "   file2=${{SAMPLE_FIXED%.*}}; "
+        "   file2=${{file2%.*}}; "
+        "   mv $file1 \"$SAMPLE_FIXED\".L\"$i\".01.fq   "
+        "   mv $file2 \"$SAMPLE_FIXED\".L\"$i\".02.fq   "
+        "   i=i+1; done"
+
+###############################################################################
+rule gunzip:
+    input: 
+        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
+        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
+    output: 
+        fastq1=FILE + 'fastq/{sample}.01.fastq', 
+        fastq2=FILE + 'fastq/{sample}.02.fastq'
+    params:
+        walltime="16:00", mem="4", name="sn.gz", threads="1"
+    shell:
+        "gunzip {input.fastq1};"
+        "gunzip {input.fastq2};"
+
+rule gzip:
+    input: 
+        fastq1=FILE + 'fastq/{sample}.01.fastq', 
+        fastq2=FILE + 'fastq/{sample}.02.fastq'
+    output: 
+        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
+        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
+    params:
+        walltime="16:00", mem="4", name="sn.gz", threads="1"
+    shell:
+        "gzip {input.fastq1};"
+        "gzip {input.fastq2};"
+
+################################################################################
+rule bwa_mem:
+    input: fastq = FILE + 'fastq/{sample}.01.fastq', 
+        R1 = FILE + 'fastq/{sample}.01.fastq', 
+        R2 = FILE + 'fastq/{sample}.02.fastq',
+        scripts = SCRIPTS, ref = REF, file = FILE, bwa=BWA, refs=REFS
+        #rg = FILE + 'fastq/{sample}.01.fastq.rg.txt',
+    output: temp(FILE + 'sam/{sample}.sam')
+    params:
+        walltime="36:00", mem="16", name="sn.bwa_mem", threads="6"
+    shell:
+        "module add singularity; "
+        #"readgroup=\"$(cat {input.rg} | head -n 1)\"; "
+        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
+        "readgroup=\"@RG\\tID:\"$(awk NR==4 {input.fastq}.rg.txt)\"\\tLB:\"$(awk NR==8 {input.fastq}.rg.txt)\"\\tPL:\"$(awk NR==2 {input.fastq}.rg.txt)\"\\tPU:\"$(awk NR==6 {input.fastq}.rg.txt)\"\\tSM:\"$(awk NR==7 {input.fastq}.rg.txt)\"\"; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bwa} "
+        "bwa mem {input.ref} -M -R \"$readgroup\" -t {params.threads} -v 3  "
+        "{input.R1} "
+        "{input.R2} "
+        "> {output} "
+
+################################################################################
+rule samtobam:
+    input: sam=FILE + 'sam/{sample}.sam', file=FILE, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+    output: temp(FILE + 'bam/{sample}.bam')
+    params:
+        walltime="24:00", mem="32", name="sn.s2b", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.refs}:{input.refs} --bind {input.file}:{input.file} {input.samtools} "
+        "samtools view -bh {input.sam} > {output}; "
+
+rule sort:
+    input:
+        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
+        fastq2=FILE + 'fastq/{sample}.02.fastq.gz',
+        bam=FILE + 'bam/{sample}.bam', file=FILE, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS #skip merge step if only one lane 
+    output:
+         FILE + 'sort/{sample}.sort.bam'
+    params:
+        walltime="24:00", mem="32", name="sn.sort", threads="1"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools sort -O bam {input.bam} -o {output};"
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools index {output} "
+
+#################################################################################
+# Merge lanes together and sort
+rule markduplicates:
+    input:
+        bam = FILE + 'sort/{sample}.L1.sort.bam', 
+        bamwrg = lambda w: list(set(expand(FILE + 'sort/{sample}.{RUN}.sort.bam', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))), tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+        #bamwrg = lambda w: expand(FILE + 'sort/{}.{RUN}.sort.bam'.format(w.sample), RUN = RGfromS(w.sample, SAMPLEWITHRG)), tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+        #bam = lambda w: expand(FILE + 'sort/{{sample}}.{RUN}.sort.bam', RUN= RGfromS(w.sample, SAMPLEWITHRG)), tmpdir = FILE + "tmp/", file = FILE, picard=PICARD, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+    output:
+         FILE + 'markdup/{sample}.sort.md.bam'
+    params: 
+        walltime="24:00", mem="16", name="sn.md", threads="1"
+    message: "executing {input.bamwrg}"
+    run:
+        if RID == 'L1':
+            shell("mv {input.bam} {output}")
+        else:
+            inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bamwrg])
+            shell("module add singularity; "
+            "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+            "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+            "MarkDuplicates "
+            "{inputstr} "
+            "O={output} "
+            "METRICS_FILE={output}.metrics.txt "
+            "CREATE_INDEX=true "
+            "VALIDATION_STRINGENCY=SILENT "
+            "TMP_DIR={input.tmpdir}; " )
+
+###################################################################################
+#Indel Realignment, Base Square Recalibration, MarkDuplicates
+rule index_and_realign_info:
+    input:
+        bam_normal = FILE + 'markdup/{sample}.N.sort.md.bam', bam_tumor= FILE + 'markdup/{sample}.T.sort.md.bam', ref = REF, p1000g=P1000G, gold=GOLD_INDELS, file=FILE, gatk=GATK, samtools=SAMTOOLS, refs=REFS 
+    output:
+        temp(FILE + 'indelrealign/{sample}.T.sort.md.intervals')
+    params:
+        walltime="24:00", mem="24", name="sn.ri", threads="12"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools index {input.bam_normal}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.samtools} "
+        "samtools index {input.bam_tumor}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
+        "java -Xmx{params.mem}G -jar /usr/GenomeAnalysisTK.jar "
+        "-T RealignerTargetCreator "
+        "-R {input.ref} "
+        "-I {input.bam_normal} "
+        "-I {input.bam_tumor} "
+        "--known {input.p1000g} "
+        "--known {input.gold} "
+        "-nt {params.threads} "
+        "-o {output} "
+
+rule realign_bam:
+    input:
+        bam_normal = FILE + 'markdup/{sample}.N.sort.md.bam', bam_tumor= FILE + 'markdup/{sample}.T.sort.md.bam', ref = REF, intervals = FILE + 'indelrealign/{sample}.T.sort.md.intervals', p1000g = P1000G, gold = GOLD_INDELS, file=FILE, gatk=GATK, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+    output:
+        bam_normal = temp(FILE + 'indelrealign/{sample}.N.sort.md.ir.bam'), bam_tumor= temp(FILE + 'indelrealign/{sample}.T.sort.md.ir.bam'), map= temp(FILE + 'indelrealign/{sample}.map')
+    params:
+        walltime="24:00", mem="8", name="sn.rb", threads="1"
+    shell:
+        "TUMOR={input.bam_tumor}; NORMAL={input.bam_normal}; "
+        "TUMOR_FIXED=${{TUMOR##*/}}; "
+        "NORMAL_FIXED=${{NORMAL##*/}}; "
+        "echo -e \"$NORMAL_FIXED\\t{output.bam_normal}\" > {output.map}; " 
+        "echo -e \"$TUMOR_FIXED\\t{output.bam_tumor}\" >> {output.map}; " 
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
+        "java -Xmx{params.mem}G -jar /usr/GenomeAnalysisTK.jar "
+        "-T IndelRealigner "
+        "-R {input.ref} "
+        "-I {input.bam_normal} "
+        "-I {input.bam_tumor} "
+        "-known {input.p1000g} "
+        "-known {input.gold} "
+        "--maxReadsInMemory 3000000 "
+        "-targetIntervals {input.intervals} "
+        "-nWayOut {output.map}; "
+
+
+################################################################################
+# BQSR
+rule baserecalibrator:
+    input:
+        bam = FILE + 'indelrealign/{sample}.sort.md.ir.bam', ref = REF,  dbsnp = DBSNP138, gold = GOLD_INDELS, p1000g = P1000G, file=FILE, gatk=GATK, refs=REFS
+    output:
+        temp(FILE + 'bqsr/{sample}.sort.ir.md.bam.recal_data.table')
+    params:
+        walltime="72:00", mem="8", name="sn.br", threads="8"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
+        "java -Xmx{params.mem}G -jar /usr/GenomeAnalysisTK.jar "
+        " -T BaseRecalibrator "
+        " -R {input.ref} "
+        " -I {input.bam} "
+        " -knownSites {input.dbsnp} "
+        " -knownSites {input.gold} "
+        " -knownSites {input.p1000g} "
+        " -o {output} "
+        " -nct {params.threads} "
+
+rule printreads:
+    input:
+        bam = FILE + 'indelrealign/{sample}.sort.md.ir.bam', br = FILE + 'bqsr/{sample}.sort.ir.md.bam.recal_data.table', ref = REF,  dbsnp = DBSNP138, file = FILE, gatk=GATK, prepro=PREPRO, samtools=SAMTOOLS, refs=REFS
+    output:
+        FILE + 'bqsr/{sample}.pp.bam'
+    params:
+        walltime="32:00", mem="8", name="sn.pr", threads="8"
+    shell:
+        "module add singularity; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.gatk} "
+        "java -Xmx{params.mem}G -jar /usr/GenomeAnalysisTK.jar "
+        " -T PrintReads "
+        " -R {input.ref} "
+        " -I {input.bam} "
+        " -BQSR {input.br} "
+        " -o {output} "
+        " -nct {params.threads}; "
+
+#################################################################################
+#################################################################################
+# Mutation calling
+rule muTect:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, ref = REF, dbsnp = DBSNP138, cosmic=COSMIC, mutect=MUTECT, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'muTect/{sample}.T.vcf'
+         #temp(expand(FILE + 'muTect/{{sample}}.{region}.T.vcf', region=REGION_b37))
+    params:
+         walltime="32:00", mem="64", name="sn.mutect", threads="1"
+    shell:
+        "module add singularity; "
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.mutect} "
+        " java -jar -Xmx{params.mem}G /mutect-1.1.7.jar -T MuTect "
+        " --reference_sequence {input.ref} "
+        " --input_file:tumor {input.tumor} "
+        " --input_file:normal {input.normal} "
+        " --dbsnp {input.dbsnp} "
+        " --cosmic {input.cosmic} "
+        " -vcf {input.file}muTect/\"$TUMOR_FIXED\".T.vcf "
+        " --out {input.file}muTect/\"$TUMOR_FIXED\".T.call_stats.txt " 
+        " --coverage_file {input.file}muTect/\"$TUMOR_FIXED\".T.coverage.wig.txt; "
+
+rule strelka:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.bam', tumor = FILE + 'bqsr/{sample}.T.pp.bam', file = FILE, scripts=SCRIPTS, refs=REFS, ref = REF, intervals = INTERVALS, dbsnp = DBSNP138
+    output:
+         FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf'
+    params:
+         walltime="24:00", mem="12", name="sn.strelka", threads="4"
+    shell:
+        'module add singularity; '
+        "TUMOR={input.tumor}; NORMAL={input.normal}; "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "NORMAL_FIXED=${{NORMAL%%.*}}; "
+        "NORMAL_FIXED=${{NORMAL_FIXED##*/}}; "
+        'cd {input.file}strelka; '
+        'rm -rf {input.file}strelka/\"$TUMOR_FIXED\".T/; ' 
+        "cp $HOME/programs/strelka_workflow-1.0.15/etc/strelka_config_bwa_default.ini {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
+        "sed -i '13s/.*/isSkipDepthFilters = 1/' {input.file}/strelka/\"$TUMOR_FIXED\".config.ini; "
+        "$HOME/programs/strelka_workflow-1.0.15/bin/configureStrelkaWorkflow.pl "
+        "    --normal={input.normal} "
+        "    --tumor={input.tumor} "
+        "    --ref={input.ref} "
+        "    --config={input.file}strelka/\"$TUMOR_FIXED\".config.ini "
+        "    --output-dir={input.file}strelka/\"$TUMOR_FIXED\".T/; "
+        "cd {input.file}strelka/\"$TUMOR_FIXED\".T/; "
+        "make -j {threads}; "
+
+################################################################################
+rule filter:
+    input:
+         strelka = FILE + 'strelka/{sample}.T/results/passed.somatic.snvs.vcf', mt = FILE + 'muTect/{sample}.T.vcf', file = FILE, ref = REF, refs=REFS, scripts=SCRIPTS
+    output:
+         FILE + 'vcf/{sample}.ann.vcf'
+         #temp(expand(FILE + 'muTect/{{sample}}.{region}.T.vcf', region=REGION_b37))
+    params:
+         walltime="24:00", mem="16", name="sn.filter", threads="1"
+    shell:
+        "module add singularity; "
+        "{input.scripts}/filtering_single.sh {input.file} {input.mt} "
+
+
+
+
+
+
+
+
+
+
+#################################################################################
+#################################################################################
+#################################################################################
+#################################################################################
+#################################################################################
+#################################################################################
+#################################################################################
+#rule bwa_mem_rgfq:
+#    input: fastq = FILE + 'fastq/{sample}.01.fastq', 
+#        R1 = FILE + 'fastq/{sample}.01.fastq', 
+#        R2 = FILE + 'fastq/{sample}.02.fastq',
+#        scripts = SCRIPTS, ref = REF, file = FILE, bwa=BWA, refs=REFS
+#    output: temp(FILE + 'sam/{sample}.sam')
+#    params:
+#        walltime="36:00", mem="16", name="sn.bwa_mem", threads="6"
+#    shell:
+#        "module add singularity; "
+#        "{input.scripts}/RGfromFastq.sh {input.fastq} {input.fastq}.rg.txt; " 
+#        "readgroup=\"@RG\\tID:\"$(awk NR==4 {input.fastq}.rg.txt)\"\\tLB:\"$(awk NR==8 {input.fastq}.rg.txt)\"\\tPL:\"$(awk NR==2 {input.fastq}.rg.txt)\"\\tPU:\"$(awk NR==6 {input.fastq}.rg.txt)\"\\tSM:\"$(awk NR==7 {input.fastq}.rg.txt)\"\"; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bwa} "
+#        "bwa mem {input.ref} -R \"$readgroup\" -M -t {params.threads} -v 3  "
+#        "{input.R1} "
+#        "{input.R2} "
+#        "> {output} "
+#
+#rule bwa_mem_rgbam:
+#    input: fastq = FILE + 'fastq/{sample}.01.fastq', 
+#        R1 = FILE + 'fastq/{sample}.01.fastq', 
+#        R2 = FILE + 'fastq/{sample}.02.fastq',
+#        rg = FILE + 'fastq/{sample}.01.fastq.rg.txt',
+#        scripts = SCRIPTS, ref = REF, file = FILE, bwa=BWA, refs=REFS
+#    output: temp(FILE + 'sam/{sample}.sam')
+#    params:
+#        walltime="36:00", mem="16", name="sn.bwa_mem", threads="6"
+#    shell:
+#        "module add singularity; "
+#        "readgroup=\"$(cat {input.rg})\"; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bwa} "
+#        "bwa mem {input.ref} -M -R \"$readgroup\" -t {params.threads} -v 3  "
+#        "{input.R1} "
+#        "{input.R2} "
+#        "> {output} "
+#
+## Annotate mutations
+#rule snpeff_muTect:
+#    input:
+#         tumor = FILE + 'vcf/{sample}.vcf', file = FILE, snpeff=SNPEFF, refs=REFS, scripts=SCRIPTS
+#    output:
+#         vcf=FILE + 'vcf/{sample}.vcf.neo.ann'
+#
+#    threads: 1
+#    params:
+#         walltime="01:00", mem="8", name="sn.snpeff", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "TUMOR={input.tumor}; "
+#        "TUMOR=${{TUMOR%%.*}}; "
+#        "TUMOR=${{TUMOR##*/}}; "
+#        "cd {input.file}vcf; "
+#        "grep \"PASS\|ALT\" {input.tumor} > \"$TUMOR\".vcf.pass;"
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
+#        "java -Xmx{params.mem}G -jar /opt/pimmuno/snpeff/snpEff.jar eff -a 13 -c ~/programs/snpEff-3.6/snpEff.config "
+#        "   -noStats -hgvs -canon -o txt -v \"GRCh37.75\" \"$TUMOR\".vcf.pass > \"$TUMOR\".vcf.pass2; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.snpeff} "
+#        "   cat \"$TUMOR\".vcf.pass2 | {input.scripts}/vcfEffOnePerLine.pl  > {output.vcf}; "
+#        "rm \"$TUMOR\".vcf.pass2;"
+#        "rm \"$TUMOR\".vcf.pass;"
+#        #"singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
+#        #"   cat \"$TUMOR\".vcf.pass2 | /opt/pimmuno/snpeff/scripts/vcfEffOnePerLine.pl  > {output.vcf}; "
+#        #"java -Xmx{params.mem}G -jar /opt/pimmuno/snpeff/snpEff.jar eff -a 13 -c /opt/pimmuno/snpeff/snpEff.config "
+#        
+
+
