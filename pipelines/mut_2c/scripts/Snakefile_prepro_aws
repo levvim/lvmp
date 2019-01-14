@@ -78,6 +78,8 @@ BWA=os.path.join(CONTAINERS + "bwa-0.7.17.simg")
 SAMTOOLS=os.path.join(CONTAINERS + "samtools-1.6.simg")
 #MUTECT=os.path.join(CONTAINERS + "mutect1-1.1.7.simg")
 MUTECT=os.path.join(CONTAINERS + "mutect-latest.simg")
+BAM_READCOUNT=os.path.join(CONTAINERS + "bam-readcount-0.7.4.simg")
+SNPEFF=os.path.join(CONTAINERS + "snpeff-4.3t.simg")
 STRELKA=os.path.join(CONTAINERS + "strelka1-1.0.15.simg")
 
 ################################################################################
