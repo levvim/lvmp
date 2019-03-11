@@ -1,29 +1,11 @@
 # levim wolchok lab 2018
 # lvmp dependency setup for ec2
-#
-# To use in a aws instance:
-#   m=s3 path to metadata csv
-#   s=s3 path to sample csv
-#   i=sample ID
-#
-#   curl https://raw.githubusercontent.com/levvim/lvmp/master/pipelines/mut_2c/scripts/mut_2c_ec2 > $HOME/mut_2c_ec2 
-#   aws configure set aws_access_key_id ASDFDSAF
-#   aws configure set aws_secret_access_key ASDFSDA
-#   aws configure set default.region aSDFADS                                                              
-#
-#   aws s3 cp $m $HOME/mut_2c_metadata.csv                                                                       
-#   aws s3 cp $s $HOME/mut_2c_samples.csv                                                                        
-#
-#   chmod u+x $HOME/mut_2c_ec2                                                                                   
-#   $HOME/mut_2c_ec2 -m $HOME/mut_2c_metadata.csv -s $HOME/mut_2c_samples.csv -i $i                       
-#
 ################################################################################
 # Project Config
 
 #getopts for argument input
-usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-u ec2-user \n\t-m "mut_2c_metadata.csv" \n\t-s "mut_2c_samples.csv" \n\t-c "SAMPLE1" \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } 
+usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-m "mut_2c_metadata.csv" \n\t-s "mut_2c_samples.csv" \n\t-i "SAMPLE1" \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } 
 [ $# -eq 0 ] && usage
-#while getopts ":h:k:s:c:" arg; do
 while getopts ":hm:s:i:" arg; do
     case $arg in
         m) #Project metadata csv
@@ -93,11 +75,11 @@ miniconda3/bin/conda install -y -c bioconda -c conda-forge snakemake
 
 SNAKEMAKE=miniconda3/bin/snakemake
 
-################################################################################
-# Set aws key
-aws configure set aws_access_key_id $MD_AWSKEY
-aws configure set aws_secret_access_key $MD_SECRETKEY
-aws configure set default.region $MD_DEFAULTREGION
+#################################################################################
+### Set aws key
+##aws configure set aws_access_key_id $MD_AWSKEY
+##aws configure set aws_secret_access_key $MD_SECRETKEY
+##aws configure set default.region $MD_DEFAULTREGION
 
 ################################################################################
 ## Configure project folders and samples
@@ -129,7 +111,7 @@ while read line; do
     aws s3 cp "$(echo $line | cut -d, -f1)" $PROJECT/fastq/"$(echo $line | cut -d, -f2)"."$(echo $line | cut -d, -f3)"."$(echo $line | cut -d, -f4)".0"$(echo $line | cut -d, -f5)".fastq.gz
 done < $HOME/SM_SET.txt
 
-################################################################################
+#################################################################################
 ## Download lvmp
 git clone git://github.com/levvim/lvmp.git /home/$USER/lvmp/
 
@@ -144,44 +126,44 @@ RUN_SNAKEFILE=$MD_SNAKEFILE
 # Start Snakemake (local run)
 SNAKEFILE_FIXED=${SNAKEFILE##*/}; 
 
-cd $WORKDIR 
-dirs=("tmp" "log" "fastq" "counts" "indelrealign" "bqsr" "merge" "optitype" "muTect" "strelka" "bam" "markdup" "sam" "sort" "neoantigen")
+cd $PROJECT
+dirs=("tmp" "log" "fastq" "counts" "indelrealign" "bqsr" "merge" "optitype" "muTect" "strelka" "bam" "markdup" "sam" "sort" "neoantigen" "vcf")
 for ((i=0;i<${#dirs[@]};++i)); do mkdir -p ${dirs[$i]}; done
 
 mkdir -p $PROJECT/tmp/
 
 ## Dry run
 #$HOME/miniconda3/bin/snakemake \
-#    -d $WORKDIR \
-#    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID" \
-#    --snakefile $SNAKEFILE --dag | dot -Tpdf > $WORKDIR/"$SNAKEFILE_FIXED"_dag.pdf
+#    -d $PROJECT \
+#    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$PROJECT" RID="$RID" \
+#    --snakefile $SNAKEFILE --dag | dot -Tpdf > $PROJECT/"$SNAKEFILE_FIXED"_dag.pdf
 
 ### Cluster submission 
 #$HOME/miniconda3/bin/snakemake \
-#    -d $WORKDIR \
+#    -d $PROJECT \
 #    --latency-wait 120 \
 #    --jobs $NUM_JOBS \
 #    --snakefile $SNAKEFILE \
 #    --keep-going \
 #    --reason \
-#    --cluster "bsub -W {params.walltime} -R rusage[mem={params.mem}] -n {params.threads} -o $WORKDIR/log/o{params.name}.log -e $WORKDIR/log/e{params.name}.log" \
-#    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$WORKDIR" RID="$RID" 
+#    --cluster "bsub -W {params.walltime} -R rusage[mem={params.mem}] -n {params.threads} -o $PROJECT/log/o{params.name}.log -e $PROJECT/log/e{params.name}.log" \
+#    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$PROJECT" RID="$RID" 
 #    #--rerun-incomplete \
 
 
 # Local submission (inside job)
-$HOME/miniconda3/bin/snakemake --latency-wait 60 --snakefile $RUN_SNAKEFILE  \
+$HOME/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \
     -d $PROJECT \
-        --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" | tee $HOME/out.txt
+    --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" 
 
 
 #################################################################################
 # Copy finished files back to s3
-cd $WORKDIR 
+cd $PROJECT 
 dirs=("log" "muTect" "strelka" "vcf")
 for ((i=0;i<${#dirs[@]};++i)); do aws s3 cp $PROJECT/${dirs[$i]}/ $MD_PROJECT_OUT/${dirs[$i]}/ --recursive; done
 
-aws s3 cp $HOME/out.txt $MD_PROJECT_OUT/out.txt
+aws s3 cp $HOME/nohup.out $MD_PROJECT_OUT/snakemake_out.txt
 
 ################################################################################
 ################################################################################
@@ -194,19 +176,3 @@ aws s3 cp $HOME/out.txt $MD_PROJECT_OUT/out.txt
 ################################################################################
 ################################################################################
 #################################################################################
-### vim
-#rm -r ~/.vim
-#git clone git://github.com/levvim/dotvim.git ~/.vim
-#ln -s ~/.vim/vimrc ~/.vimrc 
-#cd ~/.vim
-#
-#mkdir -p ~/.vim/autoload ~/.vim/bundle
-#curl -LSso ~/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
-#git clone https://github.com/scrooloose/nerdtree.git ~/.vim/bundle/nerdtree                        
-#git clone https://github.com/vim-airline/vim-airline ~/.vim/bundle/vim-airline                     
-#git clone https://github.com/vim-airline/vim-airline-themes ~/.vim/bundle/vim-airline-themes       
-#git clone git://github.com/altercation/vim-colors-solarized.git ~/.vim/bundle/vim-colors-solarized 
-#git clone https://github.com/tpope/vim-fugitive.git ~/.vim/bundle/vim-fugitive                     
-#git clone git://github.com/ntpeters/vim-better-whitespace.git ~/.vim/bundle/vim-better-whitespace  
-
-################################################################################
