@@ -34,16 +34,21 @@ MD_CONTAINERS="$(cat $METADATA | awk -F, 'NR == 6 { print $2 }' )"
 MD_SNAKEFILE="$(cat $METADATA | awk -F, 'NR == 7 { print $2 }' )"
 MD_PROJECT_OUT="$(cat $METADATA | awk -F, 'NR == 8 { print $2 }' )"
 
+HOME="/home/$MD_USER"
+
+echo '-md vars-'
 echo $HOME
 echo $MD_USER
 echo $MD_REFERENCES
 echo $MD_CONTAINERS
 echo $MD_SNAKEFILE
 echo $MD_PROJECT_OUT
-
+echo '-md vars-'
 
 ################################################################################
 # Update system and install pipeline program dependencies
+echo '-installing updates, docker/singularity and snakemake-'
+## update system
 sudo yum update -y
 sudo yum install docker -y
 sudo yum install squashfs-tools -y
@@ -74,16 +79,16 @@ sudo make install
 cd ..
 
 ## snakemake
-cd /home/$USER/
-curl https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /home/$USER/Miniconda3-latest-Linux-x86_64.sh      
-chmod u+x /home/$USER/Miniconda3-latest-Linux-x86_64.sh 
-bash /home/$USER/Miniconda3-latest-Linux-x86_64.sh -b
+cd /home/$MD_USER/
+curl https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /home/$MD_USER/Miniconda3-latest-Linux-x86_64.sh      
+chmod u+x /home/$MD_USER/Miniconda3-latest-Linux-x86_64.sh 
+bash /home/$MD_USER/Miniconda3-latest-Linux-x86_64.sh -b -p /home/$MD_USER/miniconda3
 #yes y | miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
-miniconda3/bin/conda install -y -c bioconda -c conda-forge snakemake 
+/home/$MD_USER/miniconda3/bin/conda install -y -c bioconda -c conda-forge snakemake 
 
-SNAKEMAKE=miniconda3/bin/snakemake
+SNAKEMAKE=/home/$MD_USER/miniconda3/bin/snakemake
 
-#################################################################################
+################################################################################
 ### Set aws key
 ##aws configure set aws_access_key_id $MD_AWSKEY
 ##aws configure set aws_secret_access_key $MD_SECRETKEY
@@ -91,19 +96,27 @@ SNAKEMAKE=miniconda3/bin/snakemake
 
 ################################################################################
 ## Configure project folders and samples
-mkdir -p /home/"$USER"/PROJECT/
-mkdir -p /home/"$USER"/SCRIPTS/
-mkdir -p /home/"$USER"/CONTAINERS/
-mkdir -p /home/"$USER"/REFS/
-mkdir -p /home/"$USER"/OUTPUT/
+echo '-create pipeline file structure-'
+mkdir -p /home/"$MD_USER"/PROJECT/
+mkdir -p /home/"$MD_USER"/SCRIPTS/
+mkdir -p /home/"$MD_USER"/CONTAINERS/
+mkdir -p /home/"$MD_USER"/REFS/
+mkdir -p /home/"$MD_USER"/OUTPUT/
 
-PROJECT="/home/$USER/PROJECT/"
-SCRIPTS="/home/$USER/SCRIPTS/"
-CONTAINERS="/home/$USER/CONTAINERS/"
-REFS="/home/$USER/REFS/"
-OUTPUT="/home/$USER/OUTPUT/"
+PROJECT="/home/$MD_USER/PROJECT"
+SCRIPTS="/home/$MD_USER/SCRIPTS"
+CONTAINERS="/home/$MD_USER/CONTAINERS"
+REFS="/home/$MD_USER/REFS"
+OUTPUT="/home/$MD_USER/OUTPUT"
+
+echo $PROJECT
+echo $SCRIPTS
+echo $CONTAINERS
+echo $REFS
+echo $OUTPUT
 
 # Copy in pipeline dependencies
+echo '-copying in references and containers-'
 aws s3 cp "$MD_REFERENCES" "$REFS" --recursive
 aws s3 cp "$MD_CONTAINERS" "$CONTAINERS" --recursive
 
@@ -113,22 +126,33 @@ aws s3 cp "$MD_CONTAINERS" "$CONTAINERS" --recursive
 #done < $SAMPLE
 
 # Copy in Samples (for just one set of samples)
-awk --field-separator ',' -v a="$SAMPLEID" '$2 == a { print $0 }' $SAMPLE > /home/$USER/SM_SET.txt
+echo '-copying in samples-'
+awk --field-separator ',' -v a="$SAMPLEID" '$2 == a { print $0 }' $SAMPLE > /home/$MD_USER/SM_SET.txt
+cat /home/$MD_USER/SM_SET.txt
 
 while read line; do
     aws s3 cp "$(echo $line | cut -d, -f1)" $PROJECT/fastq/"$(echo $line | cut -d, -f2)"."$(echo $line | cut -d, -f3)"."$(echo $line | cut -d, -f4)".0"$(echo $line | cut -d, -f5)".fastq.gz
-done < /home/$USER/SM_SET.txt
+done < /home/$MD_USER/SM_SET.txt
 
-#################################################################################
+################################################################################
 ## Download lvmp
-git clone git://github.com/levvim/lvmp.git /home/$USER/lvmp/
+echo '-pulling pipeline code-'
+git clone git://github.com/levvim/lvmp.git /home/$MD_USER/lvmp/
 
 ################################################################################
 # Set up snakemake specifications
 RUN_SAMPLES=$(awk -F',' '{print $2 "." $3}' $SAMPLE |  tr '\n' ' ')
 RUN_RID=$(awk -F',' '{print $6}' $SAMPLE |  tr '\n' ' ')
-RUN_SCRIPTS=/home/$USER/lvmp/pipelines/mut_2c/scripts/
+RUN_SCRIPTS=/home/$MD_USER/lvmp/pipelines/mut_2c/scripts/
 RUN_SNAKEFILE=$MD_SNAKEFILE
+
+echo '-pipeline run vars-'
+echo $SAMPLE
+echo $RUN_SAMPLES
+echo $RUN_RID
+echo $RUN_SCRIPTS
+echo $RUN_SNAKEFILE
+echo '-pipeline run vars-'
 
 ################################################################################
 # Start Snakemake (local run)
@@ -141,13 +165,13 @@ for ((i=0;i<${#dirs[@]};++i)); do mkdir -p ${dirs[$i]}; done
 mkdir -p $PROJECT/tmp/
 
 ## Dry run
-#/home/$USER/miniconda3/bin/snakemake \
+#/home/$MD_USER/miniconda3/bin/snakemake \
 #    -d $PROJECT \
 #    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$PROJECT" RID="$RID" \
 #    --snakefile $SNAKEFILE --dag | dot -Tpdf > $PROJECT/"$SNAKEFILE_FIXED"_dag.pdf
 
 ### Cluster submission 
-#/home/$USER/miniconda3/bin/snakemake \
+#/home/$MD_USER/miniconda3/bin/snakemake \
 #    -d $PROJECT \
 #    --latency-wait 120 \
 #    --jobs $NUM_JOBS \
@@ -159,19 +183,24 @@ mkdir -p $PROJECT/tmp/
 #    #--rerun-incomplete \
 
 
+echo '-running snakemake-'
 # Local submission (inside job)
-/home/$USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \
+cd /home/$MD_USER/
+
+echo -e "/home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \ -d $PROJECT \ --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" "
+
+/home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \
     -d $PROJECT \
-    --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" 
+    --config refs="$REFS" scripts=""$RUN_SCRIPTS"" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" 
 
-
-#################################################################################
+################################################################################
 # Copy finished files back to s3
+echo '-copying output back to folder-'
 cd $PROJECT 
 dirs=("log" "muTect" "strelka" "vcf")
 for ((i=0;i<${#dirs[@]};++i)); do aws s3 cp $PROJECT/${dirs[$i]}/ $MD_PROJECT_OUT/${dirs[$i]}/ --recursive; done
 
-aws s3 cp /nohup.out $MD_PROJECT_OUT/snakemake_out.txt
+aws s3 cp /nohup.out $MD_PROJECT_OUT/"$SAMPLEID"_mut2c_snakemake_out.txt
 
 ################################################################################
 ################################################################################
@@ -183,4 +212,4 @@ aws s3 cp /nohup.out $MD_PROJECT_OUT/snakemake_out.txt
 ################################################################################
 ################################################################################
 ################################################################################
-#################################################################################
+################################################################################

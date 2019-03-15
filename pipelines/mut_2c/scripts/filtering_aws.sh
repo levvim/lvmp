@@ -82,18 +82,23 @@ for i in "$SAMPLE".mutect_regions.txt; do echo $i; ifix=${i%%.*}; ifix=${ifix##*
         sort -k 1 -n | uniq > "$FILE"/vcf/"$ifix".merged_regions.txt
 done
 
+
 #################################################################################
 ##calculate bam readcounts
+
+# First determine folder that contains reference s.t. it can be attached to container
+REFS= ${reference_genome%/*}
+
 cd $FILE/
 for i in vcf/"$SAMPLE".merged_regions.txt; do echo $i; ifix=${i%%.*}; ifix=${ifix##*/};
-    singularity exec --bind $FILE:$FILE $bam_readcount \
+    singularity exec --bind $FILE:$FILE --bind $REFS:$REFS $bam_readcount \
         bam-readcount \
         -f $reference_genome \
         -l $i \
         -w 1 \
         bqsr/"$ifix".N.pp.bam \
         > vcf/"$ifix".normal_bam_readcount.txt
-    singularity exec --bind $FILE:$FILE $bam_readcount \
+    singularity exec --bind $FILE:$FILE --bind $REFS:$REFS $bam_readcount \
         bam-readcount \
         -f $reference_genome \
         -l $i \
@@ -102,10 +107,11 @@ for i in vcf/"$SAMPLE".merged_regions.txt; do echo $i; ifix=${i%%.*}; ifix=${ifi
         > vcf/"$ifix".tumor_bam_readcount.txt
 done
 
+
 #################################################################################
- organize vcfs
- delete header lines from vcfs
-cd $FILE/vcf/
+# organize vcfs
+##delete header lines from vcfs
+cd $FILE/vcf
 for i in "$SAMPLE".mutect_regions.txt; do echo $i; ifix=${i%%.*}; ifix=${ifix##*/};
     sed -i -e "1,115d" "$ifix".passed.somatic.snvs.vcf
     sed -i -e "1,2d" "$ifix".T.call_stats.txt
