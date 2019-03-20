@@ -48,6 +48,12 @@ done
 SAMPLE=${SAMPLE%%.*};
 SAMPLE=${SAMPLE##*/}
 echo $SAMPLE
+
+# Determine folder that contains reference s.t. it can be attached to container
+REFS="${reference_genome%/*}"
+
+# Determine folder that contains scripts s.t. it can be attached to container
+SCRIPTS="${filtermutations%/*}"
 ################################################################################
 #create mutect regions 
 cd "$FILE"/muTect/
@@ -85,10 +91,6 @@ done
 
 #################################################################################
 ##calculate bam readcounts
-
-# First determine folder that contains reference s.t. it can be attached to container
-REFS= ${reference_genome%/*}
-
 cd $FILE/
 for i in vcf/"$SAMPLE".merged_regions.txt; do echo $i; ifix=${i%%.*}; ifix=${ifix##*/};
     singularity exec --bind $FILE:$FILE --bind $REFS:$REFS $bam_readcount \
@@ -119,7 +121,7 @@ done
 
 cd $FILE/vcf
 for i in "$SAMPLE".merged_regions.txt; do echo $i; ifix=${i%%.*}; ifix=${ifix##*/};
-	singularity exec --bind $FILE:$FILE $snpeff bash -c "
+	singularity exec --bind $FILE:$FILE --bind $SCRIPTS:$SCRIPTS $snpeff bash -c "
 	    python3 \"$filtermutations\" \
 	        \"$ifix\" \
 	        \"$ifix\".T.call_stats.txt \
@@ -134,7 +136,7 @@ done
 #run snpeff
 cd $FILE/vcf
 for i in "$SAMPLE".merged_regions.txt; do echo $i; ifix="${i%%.*}"; ifix="${ifix##*/}";
-singularity exec --bind $FILE:$FILE $snpeff bash -c "
+singularity exec --bind $FILE:$FILE --bind $SCRIPTS:$SCRIPTS $snpeff bash -c "
     java -jar /snpEff/snpEff.jar ann \
         -noStats \
         -strict \

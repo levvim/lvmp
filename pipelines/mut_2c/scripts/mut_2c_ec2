@@ -103,11 +103,11 @@ mkdir -p /home/"$MD_USER"/CONTAINERS/
 mkdir -p /home/"$MD_USER"/REFS/
 mkdir -p /home/"$MD_USER"/OUTPUT/
 
-PROJECT="/home/$MD_USER/PROJECT"
-SCRIPTS="/home/$MD_USER/SCRIPTS"
-CONTAINERS="/home/$MD_USER/CONTAINERS"
-REFS="/home/$MD_USER/REFS"
-OUTPUT="/home/$MD_USER/OUTPUT"
+PROJECT="/home/$MD_USER/PROJECT/"
+SCRIPTS="/home/$MD_USER/SCRIPTS/"
+CONTAINERS="/home/$MD_USER/CONTAINERS/"
+REFS="/home/$MD_USER/REFS/"
+OUTPUT="/home/$MD_USER/OUTPUT/"
 
 echo $PROJECT
 echo $SCRIPTS
@@ -141,8 +141,8 @@ git clone git://github.com/levvim/lvmp.git /home/$MD_USER/lvmp/
 
 ################################################################################
 # Set up snakemake specifications
-RUN_SAMPLES=$(awk -F',' '{print $2 "." $3}' $SAMPLE |  tr '\n' ' ')
-RUN_RID=$(awk -F',' '{print $6}' $SAMPLE |  tr '\n' ' ')
+RUN_SAMPLES=$(awk -F',' '{print $2 "." $3}' /home/$MD_USER/SM_SET.txt |  tr '\n' ' ')
+RUN_RID=$(awk -F',' '{print $6}' /home/$MD_USER/SM_SET.txt |  tr '\n' ' ')
 RUN_SCRIPTS=/home/$MD_USER/lvmp/pipelines/mut_2c/scripts/
 RUN_SNAKEFILE=$MD_SNAKEFILE
 
@@ -187,7 +187,7 @@ echo '-running snakemake-'
 # Local submission (inside job)
 cd /home/$MD_USER/
 
-echo -e "/home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \ -d $PROJECT \ --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" "
+echo -e "/home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \ -d $PROJECT \ --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples=""$RUN_SAMPLES"" file="$PROJECT" RID=""$RUN_RID"" "
 
 /home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \
     -d $PROJECT \
