@@ -15,41 +15,6 @@ else:
     RID=config["RID"]
 
 sample=SAMPLE
-print(SAMPLE)
-print(RID)
-################################################################################
-# Generate list of samples given RID
-
-SAMPLEWITHRG=[]
-
-for s, r in zip(SAMPLE, RID):
-    r=int(r[-1:])
-    rg=list(range(r+1))
-    rg.pop(0)
-    for i in rg:
-        out = s + "." + "L" + str(i)
-        SAMPLEWITHRG.append(out)
-
-print(SAMPLEWITHRG)
-
-def RGfromS (sid, srg):
-    rg=[i.split('.', 2)[2] for i in srg]
-    print(rg)
-    s1=[i.split('.', 2)[0] for i in srg]
-    s2=[i.split('.', 2)[1] for i in srg]
-    s=['.'.join((first,second)) for first, second in zip(s1, s2)]
-
-    print(s)
-
-    rid=[]
-    for i in range(0,len(srg)):
-        if s[i] == sid:
-            rid.append(rg[i])
-    print(rid)
-    return rid
-
-SAMPLENOTN=[s.replace('.T', '') for s in sample]
-SAMPLENOTN=[s.replace('.N', '') for s in SAMPLENOTN]
 ################################################################################
 # References
 
@@ -60,19 +25,25 @@ REFS=config["refs"]
 SCRIPTS=config["scripts"]
 
 REF = os.path.join(REFS + "human_g1k_b37.fasta")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+DBSNP138e = os.path.join(REFS + "dbsnp_138.b37.excluding_sites_after_129.vcf")
+COSMIC = os.path.join(REFS + "CosmicCodingMuts.vcf")
+GOLD_INDELS = os.path.join(REFS + "Mills_and_1000G_gold_standard.indels.b37.vcf")
+HAPMAP= os.path.join(REFS + "hapmap_3.3.b37.vcf")
+OMNI= os.path.join(REFS + "1000G_omni2.5.b37.vcf")
+P1000G= os.path.join(REFS + "1000G_phase1.snps.high_confidence.b37.vcf")
 INTERVALS= os.path.join(REFS + "human.exome.b37.interval_list")
 
 #STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
 #GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
 
-STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75")
+STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75/")
 GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75.gtf')
 
 # Containers
 CONTAINERS=config["containers"]
-HGRNA=os.path.join(CONTAINERS + "hgrna-1.0.simg")
-#PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
-PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
+HGRNA=os.path.join(CONTAINERS + "hgrna-1.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
 
 #Illumina TruSeq adapters
 ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
@@ -80,58 +51,44 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 
 ################################################################################
 rule all:
-    input: expand(FILE + "counts/{SAMPLE}.merge.bam.txt",  SAMPLE = sample)
-
-################################################################################
-rule gunzip:
-    input: 
-        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
-        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
-    output: 
-        fastq1=FILE + 'fastq/{sample}.01.fastq', 
-        fastq2=FILE + 'fastq/{sample}.02.fastq'
-    params:
-        walltime="16:00", mem="4", name="sn.gz", threads="1"
-    shell:
-        "gunzip {input.fastq1};"
-        "gunzip {input.fastq2};"
+    input: expand(FILE + "counts/{SAMPLE}.bam.txt",  SAMPLE = sample),
 
 ################################################################################
 rule align_reads:
     input:
         fastq1 = FILE + 'rna_fastq/{sample}.01.fastq', fastq2 = FILE + 'rna_fastq/{sample}.02.fastq', starref = STARREF, file=FILE, hgrna=HGRNA
     output:
-        FILE + 'rna_fastq/{sample}.01.fastqAligned.sortedByCoord.out.bam'
+        temp(FILE + 'rna_fastq/{sample}.01.fastqAligned.sortedByCoord.out.bam')
     params:
-        walltime="48:00", mem="32", name="sn.star", threads="6"
+        walltime="48:00", mem="32", name="sn.star", threads="1"
     shell:
         "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.starref}:{input.starref} {input.hgrna} "
-        "STAR "
+        "/STAR-2.6.0a/bin/Linux_x86_64/STAR "
         "--genomeDir {input.starref} "
         "--readFilesIn {input.fastq1} {input.fastq2} "
+        "--genomeSAsparseD 2 "
         "--runThreadN {threads} "
         "--outSAMtype BAM SortedByCoordinate "
         "--outFileNamePrefix {input.fastq1} "
 
 rule merge_bam:
     input:
-        bam = FILE + 'rna_fastq/{sample}.L1.01.fastqAligned.sortedByCoord.out.bam', 
-        bamwrg = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastqAligned.sortedByCoord.out.bam', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
-        tmpdir = FILE + "tmp/", file=FILE, picard=PICARD
+        bam = expand(FILE + 'rna_fastq/{{sample}}.{RUN}.01.fastqAligned.sortedByCoord.out.bam', RUN=RID),
+        tmpdir = FILE + "tmp/", file=FILE, picard=PICARD, refs=REFS
     output:
-        FILE + 'rna_fastq/{sample}.merge.bam'
+         FILE + 'rna_fastq/{sample}.bam'
     params:
-        walltime="12:00", mem="64", name="sn.merge", threads="1"
-    message: "executing {input.bamwrg}"
+        walltime="12:00", mem="16", name="sn.merge", threads="1"
     run:
         if RID == 'L1':
             shell("mv {input.bam} {output}")
         else:
-            inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bamwrg])
-            shell("module add singularity; "
-            "singularity exec --bind {input.file}:{input.file} {input.picard} "
-            "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+            inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bam])
+            shell(
+            "module add singularity; "
+            "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+            "java -jar -Xmx{params.mem}g /usr/picard/picard.jar "
             "MergeSamFiles "
             "{inputstr} "
             "O={output}  "
@@ -145,14 +102,14 @@ rule merge_bam:
 ################################################################################
 rule countreads:
     input:
-        bam = FILE + 'rna_fastq/{sample}.merge.bam', gtf = GTF, hgrna=HGRNA
+        bam = FILE + 'rna_fastq/{sample}.bam', gtf = GTF, file=FILE, refs=REFS, hgrna=HGRNA
     output:
-        FILE + 'counts/{sample}.merge.bam.txt'
+        FILE + 'counts/{sample}.bam.txt'
     params:
         walltime="8:00", mem="12", name="sn.cr", threads="1"
     shell:
         "module add singularity; "
-        "singularity exec --bind /data/wolchok/:/data/wolchok/ {input.hgrna} "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.hgrna} "
         "featureCounts -p -T {threads} -t exon -g gene_id -a {input.gtf} -o {output} {input[0]}"
 
 ################################################################################
