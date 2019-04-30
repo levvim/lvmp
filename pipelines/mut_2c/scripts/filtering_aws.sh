@@ -11,9 +11,6 @@
 #filtermutations=/home/mangaril/lvmp/lvmp/pipelines/mut_2c/scripts/filter_mutations.py
 #snpeff_path=/data/wolchok/singularity/snpeff-4.3t.simg
 
-## merge MuTect output 
-#cat $mutect_results_folder/mutect_stats*.txt | grep -v -e "#" -e "judgement" > $mutect_results_folder/mutect_stats.tmp
-
 #getopts for argument input
 usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-p /home/ec2-user/PROJECT1/ \n\t-s Sample1 \n\t-b /home/ec2-user/CONTAINER/bam-readcount.simg \n\t-r /home/ec2-user/refs/ucsc.hg19.fasta \n\t-f /home/ec2-user/scripts/filter_mutations.py \n\t-e /home/ec2-user/CONTAINER/snpeff-4.3t.simg\n\nFlags:\n" && grep " .)\ #" $0; exit 0; } 
 [ $# -eq 0 ] && usage

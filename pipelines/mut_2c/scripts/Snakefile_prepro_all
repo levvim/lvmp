@@ -33,6 +33,7 @@ for s, r in zip(SAMPLE, RID):
         SAMPLEWITHRG.append(out)
 
 print(SAMPLEWITHRG)
+
 def RGfromS (sid, srg):
     rg=[i.split('.', 2)[2] for i in srg]
     print(rg)
@@ -89,50 +90,50 @@ rule all:
         expand(FILE + 'vcf/{SAMPLE}.ann.vcf', SAMPLE = SAMPLENOTN)
 
 #################################################################################
-## Convert to fastq
-#rule bamtofastq:
-#    input:
-#        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, tmp= FILE + 'tmp/', outputdir = FILE + 'fastq/'
-#    output:
-#        #L1 = dynamic(FILE + 'fastq/{sample}.{L}.01.fastq'), L2 = FILE + 'fastq/{sample}.02.fastq'
-#        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
-#    params:
-#        walltime="64:00", mem="16", name="sn.b2f", threads="1"
-#    shell:
-#        "module add singularity; "
-#        "SAMPLE_FIXED=${{SAMPLE_FIXED%%.*}}; "
-#        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-#        "mkdir -p {input.outputdir}/\"$SAMPLE_FIXED\"/ ; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-#        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
-#        "RevertSam "
-#        "I={input.bam} "
-#        "O={input.bam}.reverted  "
-#        "SANITIZE=true "
-#        "VALIDATION_STRINGENCY=SILENT "
-#        "MAX_DISCARD_FRACTION=100 "
-#        "TMP_DIR={input.tmp}; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
-#        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
-#        "SamToFastq "
-#        "I={input.bam}.reverted "
-#        "OUTPUT_PER_RG=true "
-#        "OUTPUT_DIR={input.outputdir}/\"$SAMPLE_FIXED\"/ "
-#        "VALIDATION_STRINGENCY=SILENT "
-#        "TMP_DIR={input.tmp}; "
-#        "rm {input.bam}.reverted; "
-#        "cd {input.outdir}/\"$SAMPLE_FIXED\"/;"
-#        "for i in *.fastq; do mv $i ../\"$SAMPLE_FIXED\".$i; done; "
-#        "cd {input.outdir}; "
-#        "i=1; "
-#        "for file1 in \"$SAMPLE_FIXED\".*.01.fq; do "
-#        "   file2=${{SAMPLE_FIXED%.*}}; "
-#        "   file2=${{file2%.*}}; "
-#        "   mv $file1 \"$SAMPLE_FIXED\".L\"$i\".01.fq   "
-#        "   mv $file2 \"$SAMPLE_FIXED\".L\"$i\".02.fq   "
-#        "   i=i+1; done"
+# Convert to fastq
+rule bamtofastq:
+    input:
+        bam=FILE + 'raw/{sample}.bam', file=FILE, picard=PICARD, prepro=PREPRO, refs=REFS, tmp= FILE + 'tmp/', outputdir = FILE + 'fastq/'
+    output:
+        #L1 = dynamic(FILE + 'fastq/{sample}.{L}.01.fastq'), L2 = FILE + 'fastq/{sample}.02.fastq'
+        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
+    params:
+        walltime="64:00", mem="16", name="sn.b2f", threads="1"
+    shell:
+        "module add singularity; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED%%.*}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "mkdir -p {input.outputdir}/\"$SAMPLE_FIXED\"/ ; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "RevertSam "
+        "I={input.bam} "
+        "O={input.bam}.reverted  "
+        "SANITIZE=true "
+        "VALIDATION_STRINGENCY=SILENT "
+        "MAX_DISCARD_FRACTION=100 "
+        "TMP_DIR={input.tmp}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "SamToFastq "
+        "I={input.bam}.reverted "
+        "OUTPUT_PER_RG=true "
+        "OUTPUT_DIR={input.outputdir}/\"$SAMPLE_FIXED\"/ "
+        "VALIDATION_STRINGENCY=SILENT "
+        "TMP_DIR={input.tmp}; "
+        "rm {input.bam}.reverted; "
+        "cd {input.outdir}/\"$SAMPLE_FIXED\"/;"
+        "for i in *.fastq; do mv $i ../\"$SAMPLE_FIXED\".$i; done; "
+        "cd {input.outdir}; "
+        "i=1; "
+        "for file1 in \"$SAMPLE_FIXED\".*.01.fq; do "
+        "   file2=${{SAMPLE_FIXED%.*}}; "
+        "   file2=${{file2%.*}}; "
+        "   mv $file1 \"$SAMPLE_FIXED\".L\"$i\".01.fq   "
+        "   mv $file2 \"$SAMPLE_FIXED\".L\"$i\".02.fq   "
+        "   i=i+1; done"
 
-###############################################################################
+##############################################################################
 rule gunzip:
     input: 
         fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 

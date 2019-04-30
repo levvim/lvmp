@@ -1,10 +1,11 @@
 # lvmp mut_2c
 
+
+
 ### Preprocessing, mutation calling and filtering of human genomes based on a 'best practices' 2 caller pipeline. This pipeline utilizes a 2 caller setup (Mutect1, Strelka1) with annotation via snpEff.
 
 SETUP: This pipeline requires the relevant singularity/docker images in addition to snakemake:
     
-    singularity pull docker://opengenomicslab/mutect:latest
     singularity pull docker://aarjunrao/cutadapt:1.9.1
     singularity pull docker://levim/dsprepro:1.1
     singularity pull docker://levim/hgmut:1.0

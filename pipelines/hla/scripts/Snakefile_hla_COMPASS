@@ -39,8 +39,8 @@ PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
 
 ################################################################################
 rule all:
-    #input: expand(FILE + "optitype/{SAMPLE}.hla", SAMPLE = sample),
-    input: expand(FILE + "fastq/{SAMPLE}_1.fastq.gz.done", SAMPLE = sample)
+    input: expand(FILE + "optitype/{SAMPLE}.hla", SAMPLE = sample),
+    #input: expand(FILE + "fastq/{SAMPLE}_1.fastq.gz.done", SAMPLE = sample)
 
 ################################################################################
 rule dl_fastq:
@@ -50,14 +50,22 @@ rule dl_fastq:
         L1 = FILE + 'fastq/{sample}_1.fastq',
         L2 = FILE + 'fastq/{sample}_2.fastq'
     params:
-        walltime="24:00", mem="16", name="sn.sra", threads="1", SID='{sample}'
+        walltime="24:00", mem="24", name="sn.sra", threads="1", SID='{sample}'
     shell:
-        "cd {input.file}/sam; "
-        "{input.file}PROGRAMS/sratoolkit.2.9.2-centos_linux64/bin/fasterq-dump.2.9.2 "
+        "cd /data/wolchok/PROJECT/compass_cnv/sam; "
+        "/data/wolchok/PROJECT/compass_cnv/sratoolkit.2.9.2-centos_linux64/bin/fasterq-dump.2.9.2 "
         "--split-files "
         "{params.SID} "
-        "-O ../fastq/; "
+        "-O {input.file}/fastq/; "
+        "rm -f /data/wolchok/PROJECT/compass_cnv/sam/sra/{params.SID}*; "
+        "rm -f /data/wolchok/PROJECT/compass_cnv/sam/fast.tmp/{params.SID}*; "
 
+        #"cd {input.file}/sam; "
+        #"{input.file}PROGRAMS/sratoolkit.2.9.2-centos_linux64/bin/fasterq-dump.2.9.2 "
+        #"--split-files "
+        #"{params.SID} "
+        #"-O ../fastq/; "
+        
 rule optitype:
     input:
          L1 = FILE + 'fastq/{sample}_1.fastq',
@@ -69,19 +77,22 @@ rule optitype:
         walltime="16:00", mem="64", name="sn.opti", threads="1"
     shell:
         "module add singularity; "
-        "i={input.L1}; ifix=${i%_*}; ifix=${ifix##*/}; "
+        "i={output.hla}; ifix=${{i%%.*}}; ifix=${{ifix##*/}}; "
         "cd {input.file}; "
         "singularity exec --bind {input.file}:{input.file} {input.optitype} "
         "    python /usr/local/bin/OptiType/OptiTypePipeline.py "
         "            --input {input.L1} {input.L2} "
         "            --dna "
         "            --verbose "
-        "            --outdir $FILE/optitype/\"$ifix\" ;"
-        "cd {input.file}/optitype/\"$ifix\"; "
-        "cp \"$(find -name \"*result*\" | head -n 1 )\" {input.file}/optitype/\"$ifix\".tsv ; "
-        "cd {input.file}/optitype/; "
-        "{input.scripts}/optitype_format -i {input.file}/optitype/\"$ifix\".tsv -o {output.hla};"
-
+        "            --outdir {input.file}/optitype/\"$ifix\" ;"
+        "touch {output}; " 
+#        "rm {input.L1}; "
+#        "rm {input.L2}; "
+        #"cd {input.file}/optitype/\"$ifix\"; "
+        #"cp \"$(find -name \"\*result\*\" | head -n 1 )\" {input.file}/optitype/\"$ifix\".tsv ; "
+        #"cd {input.file}/optitype/; "
+        #"{input.scripts}/optitype_format -i {input.file}/optitype/\"$ifix\".tsv -o {output.hla};"
+        #"i={input.L1}; ifix=${{i%%_*}}; ifix=${{ifix##*/}}; "
 
 rule gzip_fastq:
     input:
