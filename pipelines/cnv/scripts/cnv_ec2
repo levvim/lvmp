@@ -1,0 +1,215 @@
+# levim wolchok lab 2018
+# lvmp dependency setup for ec2
+################################################################################
+# Project Config
+
+#getopts for argument input
+usage() { echo -en "LVMP v1.1 EC2 setup \nExample: lvmp_ec2 \n\t-m "mut_2c_metadata.csv" \n\t-s "mut_2c_samples.csv" \n\t-i "SAMPLE1" \n\nFlags:\n" && grep " .)\ #" $0; exit 0; } 
+[ $# -eq 0 ] && usage
+while getopts ":hm:s:i:" arg; do
+    case $arg in
+        m) #Project metadata csv
+            METADATA=${OPTARG}
+            ;;
+        s) #Sample csv
+            SAMPLE=${OPTARG}
+            ;;
+        i) #Sample ID
+            SAMPLEID=${OPTARG}
+            ;;
+        h | *) # Display help.
+        usage
+            exit 0
+            ;;
+    esac
+done
+################################################################################
+# Parse input sample table for metadata
+MD_AWSKEY="$(cat $METADATA | awk -F, 'NR == 1 { print $2 }' )"
+MD_SECRETKEY="$(cat $METADATA | awk -F, 'NR == 2 { print $2 }' )"
+MD_DEFAULTREGION="$(cat $METADATA | awk -F, 'NR == 3 { print $2 }' )"
+MD_USER="$(cat $METADATA | awk -F, 'NR == 4 { print $2 }' )"
+MD_REFERENCES="$(cat $METADATA | awk -F, 'NR == 5 { print $2 }' )"
+MD_CONTAINERS="$(cat $METADATA | awk -F, 'NR == 6 { print $2 }' )"
+MD_SNAKEFILE="$(cat $METADATA | awk -F, 'NR == 7 { print $2 }' )"
+MD_PROJECT_OUT="$(cat $METADATA | awk -F, 'NR == 8 { print $2 }' )"
+
+HOME="/home/$MD_USER"
+
+echo '-md vars-'
+echo $HOME
+echo $MD_USER
+echo $MD_REFERENCES
+echo $MD_CONTAINERS
+echo $MD_SNAKEFILE
+echo $MD_PROJECT_OUT
+echo '-md vars-'
+
+################################################################################
+# Update system and install pipeline program dependencies
+echo '-installing updates, docker/singularity and snakemake-'
+## update system
+sudo yum update -y
+sudo yum install docker -y
+sudo yum install squashfs-tools -y
+sudo yum install git python -y
+sudo yum install git sed -y
+sudo yum install git cut -y
+sudo yum update -y && \
+           sudo yum groupinstall 'Development Tools' -y && \
+           sudo yum install libarchive-devel -y
+
+## docker (post install instructions)
+#sudo groupadd docker
+#sudo usermod -aG docker $(whoami)
+#sudo service docker startsudo service 
+
+sudo amazon-linux-extras install docker -y 
+sudo service docker start
+sudo usermod -a -G docker $MD_USER
+
+# singularity 2.5.2
+sudo wget https://github.com/singularityware/singularity/releases/download/2.5.1/singularity-2.5.1.tar.gz
+sudo tar -xzvf singularity-2.5.1.tar.gz 
+cd singularity-2.5.1
+./autogen.sh
+./configure --prefix=/usr/local
+make
+sudo make install
+cd ..
+
+## snakemake
+cd /home/$MD_USER/
+curl https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /home/$MD_USER/Miniconda3-latest-Linux-x86_64.sh      
+chmod u+x /home/$MD_USER/Miniconda3-latest-Linux-x86_64.sh 
+bash /home/$MD_USER/Miniconda3-latest-Linux-x86_64.sh -b -p /home/$MD_USER/miniconda3
+#yes y | miniconda3/bin/conda install -c bioconda -c conda-forge snakemake
+/home/$MD_USER/miniconda3/bin/conda install -y -c bioconda -c conda-forge snakemake 
+
+SNAKEMAKE=/home/$MD_USER/miniconda3/bin/snakemake
+
+################################################################################
+### Set aws key
+##aws configure set aws_access_key_id $MD_AWSKEY
+##aws configure set aws_secret_access_key $MD_SECRETKEY
+##aws configure set default.region $MD_DEFAULTREGION
+
+################################################################################
+## Configure project folders and samples
+echo '-create pipeline file structure-'
+mkdir -p /home/"$MD_USER"/PROJECT/
+mkdir -p /home/"$MD_USER"/SCRIPTS/
+mkdir -p /home/"$MD_USER"/CONTAINERS/
+mkdir -p /home/"$MD_USER"/REFS/
+mkdir -p /home/"$MD_USER"/OUTPUT/
+
+PROJECT="/home/$MD_USER/PROJECT/"
+SCRIPTS="/home/$MD_USER/SCRIPTS/"
+CONTAINERS="/home/$MD_USER/CONTAINERS/"
+REFS="/home/$MD_USER/REFS/"
+OUTPUT="/home/$MD_USER/OUTPUT/"
+
+echo $PROJECT
+echo $SCRIPTS
+echo $CONTAINERS
+echo $REFS
+echo $OUTPUT
+
+# Copy in pipeline dependencies
+echo '-copying in references and containers-'
+aws s3 cp "$MD_REFERENCES" "$REFS" --recursive
+aws s3 cp "$MD_CONTAINERS" "$CONTAINERS" --recursive
+
+# Copy in Samples (all samples in a project)
+#while read line; do
+#    aws s3 cp "$(cat $line | cut -d, -f1)" $PROJECT/fastq/"$(cat $line | cut -d, -f2)"."$(cat $line | cut -d, -f3)".L"$(cat $line | cut -d, -f4)".0"$(cat $line | cut -d, -f5)".fastq
+#done < $SAMPLE
+
+# Copy in Samples (for just one set of samples)
+echo '-copying in samples-'
+awk --field-separator ',' -v a="$SAMPLEID" '$2 == a { print $0 }' $SAMPLE > /home/$MD_USER/SM_SET.txt
+cat /home/$MD_USER/SM_SET.txt
+
+while read line; do
+    aws s3 cp "$(echo $line | cut -d, -f1)" $PROJECT/fastq/"$(echo $line | cut -d, -f2)"."$(echo $line | cut -d, -f3)"."$(echo $line | cut -d, -f4)".0"$(echo $line | cut -d, -f5)".fastq.gz
+done < /home/$MD_USER/SM_SET.txt
+
+################################################################################
+## Download lvmp
+echo '-pulling pipeline code-'
+git clone git://github.com/levvim/lvmp.git /home/$MD_USER/lvmp/
+
+################################################################################
+# Set up snakemake specifications
+RUN_SAMPLES=$(awk -F',' '{print $2 "." $3}' /home/$MD_USER/SM_SET.txt |  tr '\n' ' ')
+RUN_RID=$(awk -F',' '{print $6}' /home/$MD_USER/SM_SET.txt |  tr '\n' ' ')
+RUN_SCRIPTS=/home/$MD_USER/lvmp/pipelines/mut_2c/scripts/
+RUN_SNAKEFILE=$MD_SNAKEFILE
+
+echo '-pipeline run vars-'
+echo $SAMPLE
+echo $RUN_SAMPLES
+echo $RUN_RID
+echo $RUN_SCRIPTS
+echo $RUN_SNAKEFILE
+echo '-pipeline run vars-'
+
+################################################################################
+# Start Snakemake (local run)
+SNAKEFILE_FIXED=${SNAKEFILE##*/}; 
+
+cd $PROJECT
+dirs=("tmp" "log" "fastq" "counts" "indelrealign" "bqsr" "merge" "optitype" "muTect" "strelka" "bam" "markdup" "sam" "sort" "neoantigen" "vcf")
+for ((i=0;i<${#dirs[@]};++i)); do mkdir -p ${dirs[$i]}; done
+
+mkdir -p $PROJECT/tmp/
+
+## Dry run
+#/home/$MD_USER/miniconda3/bin/snakemake \
+#    -d $PROJECT \
+#    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$PROJECT" RID="$RID" \
+#    --snakefile $SNAKEFILE --dag | dot -Tpdf > $PROJECT/"$SNAKEFILE_FIXED"_dag.pdf
+
+### Cluster submission 
+#/home/$MD_USER/miniconda3/bin/snakemake \
+#    -d $PROJECT \
+#    --latency-wait 120 \
+#    --jobs $NUM_JOBS \
+#    --snakefile $SNAKEFILE \
+#    --keep-going \
+#    --reason \
+#    --cluster "bsub -W {params.walltime} -R rusage[mem={params.mem}] -n {params.threads} -o $PROJECT/log/o{params.name}.log -e $PROJECT/log/e{params.name}.log" \
+#    --config refs="$REFS" scripts="$SCRIPTS" containers="$CONTAINERS" samples="$SAMPLES" file="$PROJECT" RID="$RID" 
+#    #--rerun-incomplete \
+
+
+echo '-running snakemake-'
+# Local submission (inside job)
+cd /home/$MD_USER/
+
+echo -e "/home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \ -d $PROJECT \ --config refs="$REFS" scripts="$RUN_SCRIPTS" containers="$CONTAINERS" samples=""$RUN_SAMPLES"" file="$PROJECT" RID=""$RUN_RID"" "
+
+/home/$MD_USER/miniconda3/bin/snakemake --rerun-incomplete --latency-wait 60 --snakefile $RUN_SNAKEFILE  \
+    -d $PROJECT \
+    --config refs="$REFS" scripts=""$RUN_SCRIPTS"" containers="$CONTAINERS" samples="$RUN_SAMPLES" file="$PROJECT" RID="$RUN_RID" 
+
+################################################################################
+# Copy finished files back to s3
+echo '-copying output back to folder-'
+cd $PROJECT 
+dirs=("log" "muTect" "strelka" "vcf")
+for ((i=0;i<${#dirs[@]};++i)); do aws s3 cp $PROJECT/${dirs[$i]}/ $MD_PROJECT_OUT/${dirs[$i]}/ --recursive; done
+
+aws s3 cp /nohup.out $MD_PROJECT_OUT/"$SAMPLEID"_mut2c_snakemake_out.txt
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################

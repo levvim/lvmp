@@ -1,0 +1,25 @@
+#!/bin/bash
+#format optitype output
+
+usage() { echo "$0: format optitype output. flags:" && grep " .)\ #" $0; exit 0; }
+[ $# -eq 0 ] && usage
+while getopts ":hi:o:" arg; do
+    case $arg in
+        i) #optitype output file
+            INPUT=${OPTARG}
+            ;;
+        o) #output filename
+            OUTPUT=${OPTARG}
+            ;;
+        h | *) # Display help.
+            usage
+            exit 0
+            ;;
+    esac
+done
+
+hla="$(sed '1d' "$INPUT")" #delete first line of file and append to variable
+echo $hla | xargs -n1 > "$INPUT".temp #seperate alleles into lines and write to file
+cut -c 1,3-7 "$INPUT".temp | grep ^[ABC] > "$OUTPUT" #cut out wildcard character and grep 6 relevanct hla allele info
+sed -i -e 's/^/HLA-/' "$OUTPUT" #append hla prefix to lines
+rm "$INPUT".temp

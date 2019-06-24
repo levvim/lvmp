@@ -1,0 +1,149 @@
+#levi mangarin wolchok lab 2018
+# lvmp quantiseq Snakefile_quantiseq
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+print(SAMPLE)
+print(RID)
+################################################################################
+# Generate list of samples given RID
+
+SAMPLEWITHRG=[]
+
+for s, r in zip(SAMPLE, RID):
+    r=int(r[-1:])
+    rg=list(range(r+1))
+    rg.pop(0)
+    for i in rg:
+        out = s + "." + "L" + str(i)
+        SAMPLEWITHRG.append(out)
+
+
+def RGfromS (sid, srg):
+    rg=[i.split('.', 2)[2] for i in srg]
+    print("rg")
+    print(rg)
+    s1=[i.split('.', 2)[0] for i in srg]
+    s2=[i.split('.', 2)[1] for i in srg]
+    s=['.'.join((first,second)) for first, second in zip(s1, s2)]
+
+    print("s")
+    print(s)
+
+    print("srg")
+    print(srg)
+    print("sid")
+    print(sid)
+
+    rid=[]
+    for i in range(0,len(srg)):
+        if s[i] == sid:
+            rid.append(rg[i])
+    print("rid")
+    print(rid)
+    return rid
+
+SAMPLENOTN=[s.replace('.T', '') for s in sample]
+SAMPLENOTN=[s.replace('.N', '') for s in SAMPLENOTN]
+################################################################################
+# References
+
+FILE=config["file"]
+
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+## refs for using mm10 (mouse)
+#STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
+#GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
+
+## refs for using grch37 hg19 (human)
+STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75")
+GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75.gtf')
+
+# Containers
+CONTAINERS=config["containers"]
+HGRNA=os.path.join(CONTAINERS + "hgrna-1.0.simg")
+#PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
+
+#Illumina TruSeq adapters
+ADAPTER_R1="AGATCGGAAGAGCACACGTCT"
+ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
+
+################################################################################
+rule all:
+    input: expand(FILE + "counts/{SAMPLE}.counts.txt",  SAMPLE = sample)
+
+################################################################################
+rule gunzip:
+    input: 
+        fastq1=FILE + 'rna_fastq/{sample}.01.fastq.gz', 
+        fastq2=FILE + 'rna_fastq/{sample}.02.fastq.gz'
+    output: 
+        fastq1=FILE + 'rna_fastq/{sample}.01.fastq', 
+        fastq2=FILE + 'rna_fastq/{sample}.02.fastq'
+    params:
+        walltime="16:00", mem="4", name="sn.gz", threads="1"
+    shell:
+        "gunzip {input.fastq1};"
+        "gunzip {input.fastq2};"
+
+################################################################################
+#rule merge_fastq:
+#    input:
+#        bamwrg1 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+#        bamwrg2 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.02.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+#        tmpdir = FILE + "tmp/", file=FILE
+#    output:
+#        output1 = FILE + 'rna_fastq/{sample}.merge.01.fastq',
+#        output2 = FILE + 'rna_fastq/{sample}.merge.02.fastq'
+#    params:
+#        walltime="12:00", mem="16", name="sn.merge", threads="1"
+#    message: "executing {input.bamwrg1}"
+#    run:
+#        inputstr1 = " ".join([" {} ".format(x) for x in input.bamwrg1])
+#        inputstr2 = " ".join([" {} ".format(x) for x in input.bamwrg2])
+#        shell("cat {inputstr1} > {output.output1}")
+#        shell("cat {inputstr2} > {output.output2}")
+
+rule quantiseq:
+    input: fastq1 = FILE + 'rna_fastq/{sample}.merge.01.fastq', fastq2 = FILE + 'rna_fastq/{sample}.merge.02.fastq', file=FILE, containers=CONTAINERS
+    output:
+        FILE + 'rna_fastq/{sample}.merge.01.fastqAligned.sortedByCoord.out.bam'
+    params:
+        walltime="16:00", mem="48", name="sn.star", threads="6"
+    shell:
+        "module add singularity; "
+        "SAMPLE={input.fastq1}; "
+        "fq1={input.fastq1}; "
+        "fq2={input.fastq2}; "
+        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "cd {input.file}; "
+        "echo -e \"$TUMOR_FIXED\\t\"$fq1\"\\t\"$fq2\"\" > \"$TUMOR_FIXED\".txt "
+        "cd {input.containers}; "
+        "bash quanTIseq_pipeline.sh --inputfile=/data/wolchok/PROJECT/sk_carc_35a/quantiseq.txt --outputdir=/data/wolchok/PROJECT/sk_carc_35a/quantiseq/ "
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################

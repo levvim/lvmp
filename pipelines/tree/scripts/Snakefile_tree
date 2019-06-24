@@ -1,0 +1,59 @@
+#levi mangarin wolchok lab 2016
+# lvmp hla specific to downloading files from SRA
+# first generate all fastq files, then optitype
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+# Containers
+CONTAINERS=config["containers"]
+PHYLOWGS=os.path.join(CONTAINERS + "phylowgs-1.1.simg")
+
+################################################################################
+rule all:
+    input: expand(FILE + "tree_out/{SAMPLE}/outdir/{SAMPLE}_ssm.txt", SAMPLE = sample)
+
+################################################################################
+rule tree:
+    input:
+        file=FILE, phylowgs=PHYLOWGS,
+        vcf = FILE + 'vcf/{sample}.vcf',
+        facets = FILE + 'tree/{sample}.facets_output.txt'
+    output:
+        ssm = FILE + 'tree_out/{sample}/outdir/{sample}_ssm.txt'
+    params:
+        walltime="127:00", mem="8", name="sn.tree", threads="1"
+    shell:
+        'module add singularity; '
+        "SAMPLE={input.vcf}; "
+        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "mkdir -p {input.file}/tree_out/\"$SAMPLE_FIXED\" "
+        "cd {input.file}/tree/; "
+        "singularity exec --bind {input.file}:{input.file} {input.phylowgs} "
+        "    /scripts/dispatcher.sh "
+        "    -s \"$SAMPLE_FIXED\" "
+        "    -v {input.vcf} "
+        "    -f {input.facets} "
+        "    -o {input.file}/tree_out/ "
+

@@ -1,0 +1,209 @@
+#levi mangarin wolchok lab 2018
+# lvmp quantiseq Snakefile_quantiseq
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+print(SAMPLE)
+print(RID)
+################################################################################
+## Generate list of samples given RID
+#
+#SAMPLEWITHRG=[]
+#
+#for s, r in zip(SAMPLE, RID):
+#    r=int(r[-1:])
+#    rg=list(range(r+1))
+#    rg.pop(0)
+#    for i in rg:
+#        out = s + "." + "L" + str(i)
+#        SAMPLEWITHRG.append(out)
+#
+#
+#def RGfromS (sid, srg):
+#    rg=[i.split('.', 2)[2] for i in srg]
+#    print("rg")
+#    print(rg)
+#    s1=[i.split('.', 2)[0] for i in srg]
+#    s2=[i.split('.', 2)[1] for i in srg]
+#    s=['.'.join((first,second)) for first, second in zip(s1, s2)]
+#
+#    print("s")
+#    print(s)
+#
+#    print("srg")
+#    print(srg)
+#    print("sid")
+#    print(sid)
+#
+#    rid=[]
+#    for i in range(0,len(srg)):
+#        if s[i] == sid:
+#            rid.append(rg[i])
+#    print("rid")
+#    print(rid)
+#    return rid
+#
+#SAMPLENOTN=[s.replace('.T', '') for s in sample]
+#SAMPLENOTN=[s.replace('.N', '') for s in SAMPLENOTN]
+################################################################################
+# References
+
+FILE=config["file"]
+
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+## refs for using mm10 (mouse)
+#STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
+#GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
+
+## refs for using grch37 hg19 (human)
+REFK = os.path.join(REFS + "Mus_musculus.GRCm38.cdna.all.idx")
+WHITELIST = os.path.join(REFS + "10xv2_whitelist.txt")
+T2G = os.path.join(REFS + "mm10_t2g.txt")
+
+# Containers
+CONTAINERS=config["containers"]
+HGRNA=os.path.join(CONTAINERS + "hgrna-1.0.simg")
+PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
+
+################################################################################
+rule all:
+    input: expand(FILE + "kbus/{SAMPLE}.correct.sort.bus",  SAMPLE = sample),
+           expand(FILE + "kbus/{SAMPLE}.mtx",  SAMPLE = sample),
+           expand(FILE + "kbus/{SAMPLE}.genes.txt",  SAMPLE = sample),
+           expand(FILE + "kbus/{SAMPLE}.bus.txt",  SAMPLE = sample)
+
+################################################################################
+#rule merge_fastq:
+#    input:
+#        bamwrg1 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+#        bamwrg2 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.02.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+#        tmpdir = FILE + "tmp/", file=FILE
+#    output:
+#        output1 = FILE + 'rna_fastq/{sample}.merge.01.fastq',
+#        output2 = FILE + 'rna_fastq/{sample}.merge.02.fastq'
+#    params:
+#        walltime="12:00", mem="16", name="sn.merge", threads="1"
+#    message: "executing {input.bamwrg1}"
+#    run:
+#        inputstr1 = " ".join([" {} ".format(x) for x in input.bamwrg1])
+#        inputstr2 = " ".join([" {} ".format(x) for x in input.bamwrg2])
+#        shell("cat {inputstr1} > {output.output1}")
+#        shell("cat {inputstr2} > {output.output2}")
+
+rule align:
+    input: fastq1 = FILE + 'raw/{sample}.L1.01.fastq.gz', fastq2 = FILE + 'raw/{sample}.L1.02.fastq.gz', file=FILE, containers=CONTAINERS
+    output:
+        FILE + 'kbus/{sample}.output.bus', 
+        FILE + 'kbus/{sample}.matrix.ec',
+        FILE + 'kbus/{sample}.transcripts.txt'
+    params:
+        walltime="24:00", mem="16", name="sn.kbusa", threads="6"
+    shell:
+        "SAMPLE={input.fastq1}; "
+        "SAMPLE_FIXED=${{SAMPLE##*/}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED%%.*}}; "
+        "$HOME/programs/miniconda3/bin/kallisto bus "
+        "    -i /data/wolchok/PROJECT/refs/mm10/Mus_musculus.GRCm38.cdna.all.idx "
+        "    -o {input.file}kbus/\"$SAMPLE_FIXED\" "
+        "    -x 10xv3 "
+        "    -t {params.threads} "
+        "    {input.fastq1} "
+        "    {input.fastq2}; "
+        "cd {input.file}kbus/\"$SAMPLE_FIXED\"; "
+        "for i in *; do mv -- \"$i\" {input.file}kbus/\"\"$SAMPLE_FIXED\".$i\"; done " 
+
+rule correct:
+    input: bus = FILE + 'kbus/{sample}.output.bus', file=FILE, containers=CONTAINERS, whitelist=WHITELIST
+    output:
+        FILE + 'kbus/{sample}.correct.bus'
+    params:
+        walltime="24:00", mem="32", name="sn.kbusc", threads="1"
+    shell:
+        "$HOME/programs/bustools/bustools correct "
+        "   -w {input.whitelist} "
+        "   -o {output} "
+        "   {input.bus} "
+
+rule sort:
+    input: bus = FILE + 'kbus/{sample}.correct.bus', file=FILE, containers=CONTAINERS, whitelist=WHITELIST
+    output:
+        FILE + 'kbus/{sample}.correct.sort.bus'
+    params:
+        walltime="24:00", mem="16", name="sn.kbuss", threads="4"
+    shell:
+        "$HOME/programs/bustools/bustools sort "
+        "   -t 4 "
+        "   -o {output} "
+        "   {input.bus} "
+
+rule count_tcc:
+    input: bus = FILE + 'kbus/{sample}.correct.sort.bus', matrix = FILE + 'kbus/{sample}.matrix.ec', transcripts = FILE + 'kbus/{sample}.transcripts.txt', file=FILE, containers=CONTAINERS, whitelist=WHITELIST, t2g=T2G
+    output:
+        FILE + 'kbus/{sample}.mtx'
+    params:
+        walltime="24:00", mem="64", name="sn.kbust", threads="1"
+    shell:
+        "SAMPLE={input.bus}; "
+        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "$HOME/programs/bustools/bustools count "
+        "   -o {input.file}kbus/\"$SAMPLE_FIXED\" "
+        "   -g {input.t2g} "
+        "   -e {input.matrix} "
+        "   -t {input.transcripts} "
+        "   {input.bus} "
+
+rule count_gene:
+    input: bus = FILE + 'kbus/{sample}.correct.sort.bus', matrix = FILE + 'kbus/{sample}.matrix.ec', transcripts = FILE + 'kbus/{sample}.transcripts.txt', file=FILE, containers=CONTAINERS, whitelist=WHITELIST, t2g=T2G
+    output:
+        FILE + 'kbus/{sample}.genes.txt'
+    params:
+        walltime="24:00", mem="32", name="sn.kbusg", threads="1"
+    shell:
+        "SAMPLE={input.bus}; "
+        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "$HOME/programs/bustools/bustools count "
+        "   -o {input.file}kbus/\"$SAMPLE_FIXED\" "
+        "   -g {input.t2g} "
+        "   -e {input.matrix} "
+        "   -t {input.transcripts} "
+        "   --genecounts "
+        "   {input.bus} "
+        #"   -o {input.file}kbus/\"$SAMPLE_FIXED\" "
+
+rule txt_bus:
+    input: bus = FILE + 'kbus/{sample}.correct.sort.bus', file=FILE, containers=CONTAINERS, whitelist=WHITELIST, t2g=T2G
+    output:
+        FILE + 'kbus/{sample}.bus.txt'
+    params:
+        walltime="24:00", mem="32", name="sn.kbusg", threads="1"
+    shell:
+        "$HOME/programs/bustools/bustools text "
+        "   -o {output} "
+        "   {input.bus} "
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################

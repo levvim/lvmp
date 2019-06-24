@@ -1,0 +1,121 @@
+# levi mangarin wolchok lab 2016
+# lvmp hla specific to downloading files from SRA
+# first generate all fastq files, then optitype
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+
+REF = os.path.join(REFS + "human_g1k_b37.fasta")
+INTERVALS= os.path.join(REFS + "human.exome.b37.interval_list")
+
+OPTITYPE_REF= os.path.join(REFS + "optitype_hla_reference_dna.fasta")
+
+# Containers
+CONTAINERS=config["containers"]
+PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
+OPTITYPE=os.path.join(CONTAINERS + "optitype-writable.simg")
+DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
+PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
+SAMTOOLS=os.path.join(CONTAINERS + "samtools-1.6.simg")
+#OPTITYPE=os.path.join(CONTAINERS + "optitype-release-v1.3.1.simg")
+
+SAMPLETABLE=os.path.join(FILE + "sampletable_compass.csv")
+
+################################################################################
+rule all:
+    input: expand(FILE + "facets/{SAMPLE}.facets_output.txt", SAMPLE = sample)
+
+################################################################################
+#rule snp_pileup:
+#    input:
+#         tumor = FILE + 'bqsr/{sample}.T.pp.bam', 
+#         normal = FILE + 'bqsr/{sample}.N.pp.bam',
+#         refs=REFS, file=FILE, scripts=SCRIPTS, dbsnp=DBSNP138, outpath= FILE + 'facets/'
+#    output:
+#         cnv=FILE + 'facets/{sample}.T.facets_output.txt',
+#         snp=FILE + 'facets/{sample}.T.pileup.txt'
+#    params:
+#        walltime="16:00", mem="36", name="sn.pileup", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "module add R; "
+#        "/home/mangaril/programs/snp-pileup/htstools/snp-pileup "
+#        "--gzip -q15 -Q20 -P100 -r25,0 "
+#        "{input.dbsnp} "
+#        "{output.snp} "
+#        "{input.normal} "
+#        "{input.tumor} ;"
+#        "TUMOR={input.normal};  "
+#        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+#        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+#        "Rscript /home/mangaril/lvmp/lvmp/pipelines/hla/scripts/run_facets.R "
+#        " $TUMOR_FIXED "
+#        "{output.snp} "
+#        "{input.outpath} "
+#        "{output.cnv} ;"
+
+rule snp_pileup:
+    input:
+         normal = FILE + 'bqsr/{sample}.N.pp.bam',
+         tumor = FILE + 'bqsr/{sample}.T.pp.bam', 
+         refs=REFS, file=FILE, scripts=SCRIPTS, dbsnp=DBSNP138, outpath= FILE + 'facets'
+    output:
+         cnv = FILE + 'facets/{sample}.facets_output.txt'
+    params:
+        walltime="16:00", mem="32", name="sn.pileup", threads="1"
+    shell:
+        "module add singularity; "
+        "module add R; "
+        "module add samtools; "
+        "TUMOR={input.tumor};  "
+        "TUMOR_FIXED=${{TUMOR%%.*}}; "
+        "TUMOR_FIXED=${{TUMOR_FIXED##*/}}; "
+        "samtools index {input.normal}; "
+        "samtools index {input.tumor}; "
+        "echo \"finished with index. running snp-pileup\";"
+        "/home/mangaril/programs/snp-pileup/htstools/snp-pileup "
+        "--gzip -q15 -Q20 -P100 -r25,0 "
+        "{input.dbsnp} "
+        "{input.outpath}/\"$TUMOR_FIXED\".csv.gz "
+        "{input.normal} "
+        "{input.tumor} ;"
+        "cp {input.outpath}/\"$TUMOR_FIXED\".csv.gz {input.outpath}/\"$TUMOR_FIXED\".csv.gz2; "
+        "echo \"finished with pileup. running facets\"; "
+        "cd {input.outpath}; "
+        "Rscript /home/mangaril/lvmp/lvmp/pipelines/cnv/scripts/run_facets.R "
+        "$TUMOR_FIXED "
+        "{input.outpath}/$TUMOR_FIXED.csv.gz "
+        "{input.outpath}; "
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################

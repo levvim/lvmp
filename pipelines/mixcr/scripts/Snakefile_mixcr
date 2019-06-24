@@ -85,7 +85,7 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 
 ################################################################################
 rule all:
-    input: expand(FILE + "counts/{SAMPLE}.counts.txt",  SAMPLE = sample)
+    input: expand(FILE + "mixcr/{SAMPLE}.txt",  SAMPLE = sample)
 
 ################################################################################
 rule gunzip:
@@ -119,62 +119,21 @@ rule merge_fastq:
         shell("cat {inputstr1} > {output.output1}")
         shell("cat {inputstr2} > {output.output2}")
 
-rule align_reads:
-    input: fastq1 = FILE + 'rna_fastq/{sample}.merge.01.fastq', fastq2 = FILE + 'rna_fastq/{sample}.merge.02.fastq', starref = STARREF, file=FILE, hgrna=HGRNA
+rule mixcr:
+    input: fastq1 = FILE + 'rna_fastq/{sample}.merge.01.fastq', fastq2 = FILE + 'rna_fastq/{sample}.merge.02.fastq', file=FILE
     output:
-        FILE + 'rna_fastq/{sample}.merge.01.fastqAligned.sortedByCoord.out.bam'
+        FILE + 'mixcr/{sample}.mixcr.txt'
     params:
-        walltime="48:00", mem="48", name="sn.star", threads="6"
+        walltime="48:00", mem="48", name="sn.mixcr", threads="6"
     shell:
         "module add singularity; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.starref}:{input.starref} {input.hgrna} "
-        "STAR "
-        "--genomeDir {input.starref} "
-        "--readFilesIn {input.fastq1} {input.fastq2} "
-        "--runThreadN {threads} "
-        "--outSAMtype BAM SortedByCoordinate "
-        "--outFileNamePrefix {input.fastq1} "
-
-#rule merge_bam:
-#    input:
-#        bam = FILE + 'rna_fastq/{sample}.L1.01.fastqAligned.sortedByCoord.out.bam', 
-#        bamwrg = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastqAligned.sortedByCoord.out.bam', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
-#        tmpdir = FILE + "tmp/", file=FILE, picard=PICARD
-#    output:
-#        FILE + 'rna_fastq/{sample}.merge.bam'
-#    params:
-#        walltime="12:00", mem="64", name="sn.merge", threads="1"
-#    message: "executing {input.bamwrg}"
-#    run:
-#        if RID == 'L1':
-#            shell("mv {input.bam} {output}")
-#        else:
-#            inputstr = " ".join(["INPUT= {} ".format(x) for x in input.bamwrg])
-#            shell("module add singularity; "
-#            "singularity exec --bind {input.file}:{input.file} {input.picard} "
-#            "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
-#            "MergeSamFiles "
-#            "{inputstr} "
-#            "O={output}  "
-#            "SORT_ORDER=coordinate  "
-#            "VALIDATION_STRINGENCY=LENIENT  "
-#            "CREATE_INDEX=true  "
-#            "USE_THREADING=false  "
-#            "TMP_DIR={input.tmpdir} "
-#            "#MAX_RECORDS_IN_RAM=5000000; ")
-
-################################################################################
-rule countreads:
-    input:
-        bam = FILE + 'rna_fastq/{sample}.merge.01.fastqAligned.sortedByCoord.out.bam', gtf = GTF, hgrna=HGRNA
-    output:
-        FILE + 'counts/{sample}.counts.txt'
-    params:
-        walltime="8:00", mem="12", name="sn.cr", threads="1"
-    shell:
-        "module add singularity; "
-        "singularity exec --bind /data/wolchok/:/data/wolchok/ {input.hgrna} "
-        "featureCounts -p -T {threads} -t exon -g gene_id -a {input.gtf} -o {output} {input[0]}"
+        "module add java/8.0; "
+        "$HOME/programs/mixcr-3.0.7/mixcr analyze shotgun "
+        "      --species hs "
+        "      --starting-material rna "
+        "      --only-productive "
+        "      {input.fastq1} {input.fastq2}"
+        "      analysis "
 
 ################################################################################
 ################################################################################

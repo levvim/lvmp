@@ -1,0 +1,60 @@
+#levi mangarin wolchok lab 2016
+#calculate expression (readcounts) in rnaseq that occur in candidate neoepitopes (via netmhcpan) to filter out neoantigens that are not expressed
+#NMP ran locally, upload finished neoantigen folder back up to cluster
+
+#cd ~/../../projects/lesokhin/neoantigen
+#~/scripts/neoantigen_allfilter_mutect.sh \
+#    -w ~/../../projects/lesokhin/ \
+#    -p leso \
+#    -t SK-CARC35A \
+#    -r ~/../../projects/lesokhin/rna_fastq/SK-CARC_35AR.01.fastqAligned.sortedByCoord.out.bam \
+#    -s SK-CARC35A.hla
+
+usage() { echo "$0: filter candidate neoepitopes based on normal and rna filtering. flags:" && grep " .)\ #" $0; exit 0; }
+[ $# -eq 0 ] && usage
+while getopts ":hw:f:t:i:o:" arg; do
+    case $arg in
+        w) #work directory
+            WORK_DIR=${OPTARG}
+            ;;
+        f) #R normal filter script
+            FILTERSCRIPT=${OPTARG}
+            ;;
+        t) #tumor IDs i.e. bam file strings with no filetype
+            TUMOR=($OPTARG)
+            ;;
+        i) #name of txt files titled *.hla corresponding to tumor hla types
+            HLA=($OPTARG)
+            ;;
+        o) #output file
+            OUTPUT=($OPTARG)
+            ;;
+        h | *) # Display help.
+            usage
+            exit 0
+            ;;
+    esac
+done
+
+TUMOR=${TUMOR%%.*};
+TUMOR=${TUMOR##*/};
+
+cd $WORK_DIR/neoantigen
+
+sample=$TUMOR
+cat "$HLA" | while read -r line; do #loop through each hla allele
+    hla="$line"
+    echo -e ""$sample.rnafilter.join.pep"\n"$sample.rnafilter.join.pep"\n$(cat $sample.rnafilter.join.pep)" > $sample.tumor.join.pep.temp #account for header so that rnafilter column stays aligned during paste (two header lines) #TODO fix repetition error adding extra lines
+        
+        #grep SB epitopes and cut/grep kmer file to include loci, format bed (NAME field should be the epitope)
+        paste -d"\t" "$sample".tumor.join.pep.temp "$sample".tumor."$hla".xls | awk 'NR > 2 { print }' > "$sample".tumor."$hla".pan  
+        paste -d"\t" "$sample".tumor.join.pep.temp "$sample".normal."$hla".xls | awk 'NR > 2 { print }' > "$sample".normal."$hla".pan  
+        
+        echo "filtering normal out for "$sample": "$hla""
+
+        Rscript $FILTERSCRIPT ""$sample".tumor."$hla".pan" ""$sample".normal."$hla".pan" "$sample".filter."$hla".pan $WORK_DIR/neoantigen #TODO fix empty rowname for first col
+
+        awk -F"\t" 'OFS="\t" {print "'$hla'", "\t", $0}' "$sample".filter."$hla".pan >> "$sample".pan
+
+done
+
