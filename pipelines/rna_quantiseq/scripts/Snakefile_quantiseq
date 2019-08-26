@@ -133,9 +133,9 @@ rule quantiseq:
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
         "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
         "cd {input.file}; "
-        "echo -e \"$TUMOR_FIXED\\t\"$fq1\"\\t\"$fq2\"\" > \"$TUMOR_FIXED\".txt "
+        "echo -e \"$SAMPLE_FIXED\\t\"$fq1\"\\t\"$fq2\"\" > \"$SAMPLE_FIXED\".txt "
         "cd {input.containers}; "
-        "bash quanTIseq_pipeline.sh --inputfile=/data/wolchok/PROJECT/sk_carc_35a/quantiseq.txt --outputdir=/data/wolchok/PROJECT/sk_carc_35a/quantiseq/ "
+        "bash quanTIseq_pipeline.sh --inputfile=/data/wolchok/PROJECT/\"$SAMPLE_FIXED\"/quantiseq.txt --outputdir=/data/wolchok/PROJECT/\"$SAMPLE_FIXED\"/quantiseq/ "
 
 ################################################################################
 ################################################################################

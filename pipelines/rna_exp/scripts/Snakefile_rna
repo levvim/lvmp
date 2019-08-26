@@ -15,7 +15,9 @@ else:
     RID=config["RID"]
 
 sample=SAMPLE
+print("rg")
 print(SAMPLE)
+print("rg")
 print(RID)
 ################################################################################
 # Generate list of samples given RID
@@ -30,8 +32,10 @@ for s, r in zip(SAMPLE, RID):
         out = s + "." + "L" + str(i)
         SAMPLEWITHRG.append(out)
 
+print(SAMPLEWITHRG)
 
 def RGfromS (sid, srg):
+    print(srg)
     rg=[i.split('.', 2)[2] for i in srg]
     print("rg")
     print(rg)
@@ -55,8 +59,6 @@ def RGfromS (sid, srg):
     print(rid)
     return rid
 
-SAMPLENOTN=[s.replace('.T', '') for s in sample]
-SAMPLENOTN=[s.replace('.N', '') for s in SAMPLENOTN]
 ################################################################################
 # References
 
@@ -88,43 +90,57 @@ rule all:
     input: expand(FILE + "counts/{SAMPLE}.counts.txt",  SAMPLE = sample)
 
 ################################################################################
-rule gunzip:
-    input: 
-        fastq1=FILE + 'rna_fastq/{sample}.01.fastq.gz', 
-        fastq2=FILE + 'rna_fastq/{sample}.02.fastq.gz'
-    output: 
-        fastq1=FILE + 'rna_fastq/{sample}.01.fastq', 
-        fastq2=FILE + 'rna_fastq/{sample}.02.fastq'
-    params:
-        walltime="16:00", mem="4", name="sn.gz", threads="1"
-    shell:
-        "gunzip {input.fastq1};"
-        "gunzip {input.fastq2};"
+#rule gunzip:
+#    input: 
+#        fastq1=FILE + 'rna_fastq/{sample}.R.01.fastq.gz', 
+#        fastq2=FILE + 'rna_fastq/{sample}.R.02.fastq.gz'
+#    output: 
+#        fastq1=FILE + 'rna_fastq/{sample}.R.01.fastq', 
+#        fastq2=FILE + 'rna_fastq/{sample}.R.02.fastq'
+#    params:
+#        walltime="16:00", mem="4", name="sn.gz", threads="1"
+#    shell:
+#        "gunzip {input.fastq1};"
+#        "gunzip {input.fastq2};"
 
 ################################################################################
-rule merge_fastq:
+rule gunzip_merge_fastq:
     input:
-        bamwrg1 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
-        bamwrg2 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.02.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+        bamwrg1 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastq.gz', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+        bamwrg2 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.02.fastq.gz', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
         tmpdir = FILE + "tmp/", file=FILE
     output:
-        output1 = FILE + 'rna_fastq/{sample}.merge.01.fastq',
-        output2 = FILE + 'rna_fastq/{sample}.merge.02.fastq'
+        output1 = FILE + 'rna_fastq/{sample}.merge.01.fastq.gz',
+        output2 = FILE + 'rna_fastq/{sample}.merge.02.fastq.gz'
     params:
         walltime="12:00", mem="16", name="sn.merge", threads="1"
     message: "executing {input.bamwrg1}"
     run:
         inputstr1 = " ".join([" {} ".format(x) for x in input.bamwrg1])
         inputstr2 = " ".join([" {} ".format(x) for x in input.bamwrg2])
+        shell("echo {inputstr1}")
         shell("cat {inputstr1} > {output.output1}")
         shell("cat {inputstr2} > {output.output2}")
+
+rule gunzip:
+    input: 
+        fastq1=FILE + 'rna_fastq/{sample}.merge.01.fastq.gz', 
+        fastq2=FILE + 'rna_fastq/{sample}.merge.02.fastq.gz'
+    output: 
+        fastq1=FILE + 'rna_fastq/{sample}.merge.01.fastq', 
+        fastq2=FILE + 'rna_fastq/{sample}.merge.02.fastq'
+    params:
+        walltime="16:00", mem="4", name="sn.gz", threads="1"
+    shell:
+        "gunzip {input.fastq1};"
+        "gunzip {input.fastq2};"
 
 rule align_reads:
     input: fastq1 = FILE + 'rna_fastq/{sample}.merge.01.fastq', fastq2 = FILE + 'rna_fastq/{sample}.merge.02.fastq', starref = STARREF, file=FILE, hgrna=HGRNA
     output:
         FILE + 'rna_fastq/{sample}.merge.01.fastqAligned.sortedByCoord.out.bam'
     params:
-        walltime="48:00", mem="48", name="sn.star", threads="6"
+        walltime="48:00", mem="32", name="sn.star", threads="4"
     shell:
         "module add singularity; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.starref}:{input.starref} {input.hgrna} "

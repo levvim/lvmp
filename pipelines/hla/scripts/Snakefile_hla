@@ -15,6 +15,48 @@ else:
     RID=config["RID"]
 
 sample=SAMPLE
+print(SAMPLE)
+print(RID)
+################################################################################
+# Generate list of samples given RID
+
+SAMPLEWITHRG=[]
+
+for s, r in zip(SAMPLE, RID):
+    r=int(r[-1:])
+    rg=list(range(r+1))
+    rg.pop(0)
+    for i in rg:
+        out = s + "." + "L" + str(i)
+        SAMPLEWITHRG.append(out)
+
+
+def RGfromS (sid, srg):
+    rg=[i.split('.', 2)[2] for i in srg]
+    print("rg")
+    print(rg)
+    s1=[i.split('.', 2)[0] for i in srg]
+    s2=[i.split('.', 2)[1] for i in srg]
+    s=['.'.join((first,second)) for first, second in zip(s1, s2)]
+
+    print("s")
+    print(s)
+
+    print("srg")
+    print(srg)
+    print("sid")
+    print(sid)
+
+    rid=[]
+    for i in range(0,len(srg)):
+        if s[i] == sid:
+            rid.append(rg[i])
+    print("rid")
+    print(rid)
+    return rid
+
+SAMPLENOTN=[s.replace('.T', '') for s in sample]
+SAMPLENOTN=[s.replace('.N', '') for s in SAMPLENOTN]
 ################################################################################
 # References
 
@@ -60,8 +102,8 @@ rule merge_fastq:
         bamwrg2 = lambda w: list(set(expand(FILE + 'fastq/{sample}.{RUN}.02.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
         tmpdir = FILE + "tmp/", file=FILE
     output:
-        output1 = FILE + 'fastq/{sample}.merge.01.fastq',
-        output2 = FILE + 'fastq/{sample}.merge.02.fastq'
+        output1 = temp(FILE + 'fastq/{sample}.merge.01.fastq'),
+        output2 = temp(FILE + 'fastq/{sample}.merge.02.fastq')
     params:
         walltime="12:00", mem="16", name="sn.merge", threads="1"
     message: "executing {input.bamwrg1}"
@@ -90,7 +132,6 @@ rule optitype:
         #"cd {input.outdir}/\"$SAMPLE\; "
         #"cp $(find -name \"*result*\" | head -n 1) {output}.optitype; "
         #"singularity exec --bind {input.file}:{input.file} {input.prepro} "
-        #"{input.scripts}/optitype_format -i {output}.optitype -o {output}; "
 
 
 ################################################################################
