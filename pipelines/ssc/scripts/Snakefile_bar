@@ -59,7 +59,7 @@ SCRIPTS=config["scripts"]
 
 ## refs for using grch37 hg19 (human)
 REFK = os.path.join(REFS + "Mus_musculus.GRCm38.cdna.all.idx")
-WHITELIST = os.path.join(REFS + "10xv2_whitelist.txt")
+WHITELIST = os.path.join(REFS + "10xv3_whitelist.txt")
 T2G = os.path.join(REFS + "mm10_t2g.txt")
 
 # Containers
@@ -70,14 +70,14 @@ VDJTOOLS=os.path.join(CONTAINERS + "vdjtools-1.2.1.simg")
 
 ################################################################################
 rule all:
-    input: 
-        #expand(FILE + "crbar/{SAMPLE}/outs/filtered_feature_bc_matrix/matrix.mtx.gz.out",  SAMPLE = sample)
-        expand(FILE + "crbar/{SAMPLE}/out.txt",  SAMPLE = sample)
+    input:
+        expand(FILE + "crbar/{SAMPLE}/outs/filtered_feature_bc_matrix/matrix.mtx.gz.out",  SAMPLE = sample)
+        #expand(FILE + "crbar/{SAMPLE}/read_count/barcodes.tsv.gz",  SAMPLE = sample)
 
 ################################################################################
 
 rule cr_count:
-    input: sample = FILE + 'raw/{sample}/{sample}.txt', barcode = FILE + 'vdj_v1_hs_pbmc2_5gex_protein_feature_ref.csv', file=FILE, refs=REFS, containers=CONTAINERS, cellranger=CELLRANGER
+    input: sample = FILE + 'raw/{sample}/{sample}.txt', barcode = FILE + 'totalseq-c_cr.csv', file=FILE, refs=REFS, containers=CONTAINERS, cellranger=CELLRANGER
     output:
         FILE + "crbar/{sample}/outs/filtered_feature_bc_matrix/matrix.mtx.gz.out"
     params:
@@ -98,40 +98,43 @@ rule cr_count:
         "   --id=\"$SAMPLE_FIXED\" "
         "   --transcriptome={input.refs}/refdata-cellranger-mm10-3.0.0 "
         "   --libraries {input.file}/raw/\"$SAMPLE_FIXED\".lib.txt"
-        "   --feature-ref {input.file}/vdj_v1_hs_pbmc2_5gex_protein_feature_ref.csv "
+        "   --feature-ref {input.barcode} "
         "   --chemistry SC5P-R2 "
         "   --expect-cells=1000 "
         "   --localcores={params.threads}; "
         "touch {output}"
 
-rule citeseq:
-    input: 
-        fastq1 = FILE + 'raw/{sample}/{sample}.L1.01.fastq.gz',
-        fastq2 = FILE + 'raw/{sample}/{sample}.L1.02.fastq.gz',
-        tags = FILE + 'totalseq-c.csv',
-        file=FILE, refs=REFS, containers=CONTAINERS
-    output:
-        FILE + "crbar/{sample}/out.txt"
-    params:
-        walltime="24:00", mem="64", name="sn.citeseqc", threads="1"
-    shell:
-        "SAMPLE={input.fastq1}; "
-        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-        "cd {input.file}/crbar/; "
-        "mkdir -p {input.file}/crbar/\"$SAMPLE_FIXED\"; "
-        "~/programs/miniconda3/bin/CITE-seq-Count "
-        "   -R1 {input.fastq1} "
-        "   -R2 {input.fastq2} "
-        "   -t {input.tags} "
-        "   -cbf 1 "
-        "   -cbl 16 "
-        "   -umif 17 "
-        "   -umil 26"
-        "   --expected_cells 10000 "
-        "   --threads {params.threads} "
-        "   -o {input.file}/crbar/\"$SAMPLE_FIXED\"; "
-        "touch {output}; "
+#rule citeseq:
+#    input:
+#        fastq1 = FILE + 'raw/{sample}/{sample}.L1.01.fastq.gz',
+#        fastq2 = FILE + 'raw/{sample}/{sample}.L1.02.fastq.gz',
+#        tags = FILE + 'totalseq-c.csv',
+#        file=FILE, refs=REFS, containers=CONTAINERS, whitelist=WHITELIST
+#    output:
+#        FILE + "crbar/{sample}/read_count/barcodes.tsv.gz"
+#    params:
+#        walltime="64:00", mem="32", name="sn.citeseqc", threads="4"
+#    shell:
+#        "SAMPLE={input.fastq1}; "
+#        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
+#        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+#        "cd {input.file}/crbar/; "
+#        "mkdir -p {input.file}/crbar/\"$SAMPLE_FIXED\"; "
+#        "~/programs/miniconda3/bin/CITE-seq-Count "
+#        "   -R1 {input.fastq1} "
+#        "   -R2 {input.fastq2} "
+#        "   -t {input.tags} "
+#        "   --whitelist {input.whitelist} "
+#        "   -cbf 1 "
+#        "   -cbl 16 "
+#        "   -umif 17 "
+#        "   -umil 26"
+#        "   --start-trim 10 "
+#        "   --sliding-window "
+#        "   --expected_cells 10500 "
+#        "   --threads {params.threads} "
+#        "   -o {input.file}/crbar/\"$SAMPLE_FIXED\"; "
+#        "touch {output}; "
 
 ################################################################################
 ################################################################################

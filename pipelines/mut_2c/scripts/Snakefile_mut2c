@@ -146,18 +146,18 @@ rule gunzip:
         "gunzip {input.fastq1};"
         "gunzip {input.fastq2};"
 
-rule gzip:
-    input: 
-        fastq1=FILE + 'fastq/{sample}.01.fastq', 
-        fastq2=FILE + 'fastq/{sample}.02.fastq'
-    output: 
-        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
-        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
-    params:
-        walltime="16:00", mem="4", name="sn.gz", threads="1"
-    shell:
-        "gzip {input.fastq1};"
-        "gzip {input.fastq2};"
+#rule gzip:
+#    input: 
+#        fastq1=FILE + 'fastq/{sample}.01.fastq', 
+#        fastq2=FILE + 'fastq/{sample}.02.fastq'
+#    output: 
+#        fastq1=FILE + 'fastq/{sample}.01.fastq.gz', 
+#        fastq2=FILE + 'fastq/{sample}.02.fastq.gz'
+#    params:
+#        walltime="16:00", mem="4", name="sn.gz", threads="1"
+#    shell:
+#        "gzip {input.fastq1};"
+#        "gzip {input.fastq2};"
 
 ################################################################################
 rule bwa_mem:

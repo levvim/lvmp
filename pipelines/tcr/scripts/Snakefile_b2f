@@ -1,5 +1,5 @@
-#levi mangarin wolchok lab 2018
-# lvmp ssc Snakefile_ssc
+#levi mangarin wolchok lab 2019
+# lvmp b2f Snakefile_b2f
 
 ################################################################################
 # Samples
@@ -67,44 +67,41 @@ CONTAINERS=config["containers"]
 CELLRANGER=os.path.join(CONTAINERS + "cellranger-3.1.0.simg")
 MIXCR=os.path.join(CONTAINERS + "mixcr-3.0.9.simg")
 VDJTOOLS=os.path.join(CONTAINERS + "vdjtools-1.2.1.simg")
+PICARD=os.path.join(CONTAINERS + "picard-2.11.simg")
 
 ################################################################################
 rule all:
-    input:
-        expand(FILE + "cr/{SAMPLE}/outs/filtered_feature_bc_matrix/matrix.mtx.gz.out",  SAMPLE = sample)
+    input: 
+        expand(FILE + "fastq/{SAMPLE}.01.fastq",  SAMPLE = sample),
+        expand(FILE + "fastq/{SAMPLE}.02.fastq",  SAMPLE = sample)
 
 ################################################################################
 
-rule cr_count:
-    input: sample = FILE + 'raw/{sample}/{sample}.txt', file=FILE, refs=REFS, containers=CONTAINERS, cellranger=CELLRANGER
+rule bamtofastq:
+    input:
+        bam=FILE + 'bam/{sample}.bam', file=FILE, picard=PICARD, refs=REFS, tmp= FILE + 'tmp/', outputdir = FILE + 'fastq/'
     output:
-        FILE + 'cr/{sample}/outs/filtered_feature_bc_matrix/matrix.mtx.gz.out'
+        L1 = FILE + 'fastq/{sample}.01.fastq', L2 = FILE + 'fastq/{sample}.02.fastq'
+
     params:
-        walltime="24:00", mem="32", name="sn.cr", threads="8"
+        walltime="64:00", mem="16", name="sn.b2f", threads="1"
     shell:
         "module add singularity; "
-        "SAMPLE={input.sample}; "
-        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-        "rm -rf {input.file}/cr/\"$SAMPLE_FIXED\"; "
-        "cd {input.file}/cr/; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.cellranger} "
-        "   /cellranger-3.1.0/cellranger count "
-        "   --id=\"$SAMPLE_FIXED\" "
-        "   --transcriptome={input.refs}/refdata-cellranger-mm10-3.0.0 "
-        "   --fastqs={input.file}raw/\"$SAMPLE_FIXED\" "
-        "   --sample=\"$SAMPLE_FIXED\" "
-        "   --expect-cells=1000 "
-        "   --localcores={params.threads}; "
-        "touch {output}"
-
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "RevertSam "
+        "I={input.bam} "
+        "O={input.bam}.reverted  "
+        "SANITIZE=true "
+        "VALIDATION_STRINGENCY=SILENT "
+        "MAX_DISCARD_FRACTION=100 "
+        "TMP_DIR={input.tmp}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.picard} "
+        "java -jar -Xmx{params.mem}g /picard-2.11/picard.jar "
+        "SamToFastq "
+        "I={input.bam}.reverted "
+        "OUTPUT_PER_RG=true "
+        "OUTPUT_DIR={input.outputdir} "
+        "VALIDATION_STRINGENCY=SILENT "
+        "TMP_DIR={input.tmp}; "
+        "rm {input.bam}.reverted; "

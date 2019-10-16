@@ -38,7 +38,8 @@ rule tree:
     input:
         file=FILE, phylowgs=PHYLOWGS,
         vcf = FILE + 'vcf/{sample}.vcf',
-        facets = FILE + 'tree/{sample}.facets_output.txt'
+        facets = FILE + 'facets/{sample}.facets_output.txt'
+        #facets = FILE + 'tree/{sample}.facets_output.txt'
     output:
         ssm = FILE + 'tree_out/{sample}/outdir/{sample}_ssm.txt'
     params:

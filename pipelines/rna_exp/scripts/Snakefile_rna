@@ -68,12 +68,12 @@ REFS=config["refs"]
 SCRIPTS=config["scripts"]
 
 ## refs for using mm10 (mouse)
-STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
-GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
+#STARREF= os.path.join(REFS + "ENSEMBL.mus_musculus.release-75/")
+#GTF= os.path.join(REFS + 'ENSEMBL.mus_musculus.release-75/Mus_musculus.GRCm38.75.gtf')
 
-## refs for using grch37 hg19 (human)
-#STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75")
-#GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75.gtf')
+# refs for using grch37 hg19 (human)
+STARREF= os.path.join(REFS + "ENSEMBL.homo_sapiens.release-75")
+GTF= os.path.join(REFS + 'ENSEMBL.homo_sapiens.release-75/Homo_sapiens.GRCh37.75.gtf')
 
 # Containers
 CONTAINERS=config["containers"]
@@ -88,20 +88,6 @@ ADAPTER_R2="AGATCGGAAGAGCGTCGTGTA"
 ################################################################################
 rule all:
     input: expand(FILE + "counts/{SAMPLE}.counts.txt",  SAMPLE = sample)
-
-################################################################################
-#rule gunzip:
-#    input: 
-#        fastq1=FILE + 'rna_fastq/{sample}.R.01.fastq.gz', 
-#        fastq2=FILE + 'rna_fastq/{sample}.R.02.fastq.gz'
-#    output: 
-#        fastq1=FILE + 'rna_fastq/{sample}.R.01.fastq', 
-#        fastq2=FILE + 'rna_fastq/{sample}.R.02.fastq'
-#    params:
-#        walltime="16:00", mem="4", name="sn.gz", threads="1"
-#    shell:
-#        "gunzip {input.fastq1};"
-#        "gunzip {input.fastq2};"
 
 ################################################################################
 rule gunzip_merge_fastq:

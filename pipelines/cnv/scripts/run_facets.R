@@ -2,6 +2,11 @@
 
 # This script runs CNV calling on paired normal/tumor bams.
 
+## install facets
+library(devtools)
+devtools::install_github('mskcc/pctGCdata')
+devtools::install_github('mskcc/facets')
+
 # load library
 library(facets)
 
@@ -24,7 +29,7 @@ fit <- emcncf(oo)
 
 # further processing
 newcols <- c("chromosome", "start", "end", "copy_number", "minor_cn", "major_cn", 
-            "cellular_prevalence")
+        "cellular_prevalence")
 copy_num <- fit$cncf[13] + fit$cncf[14]
 res <- cbind(fit$cncf[c(1, 10, 11)], copy_num, fit$cncf[c(14, 13, 12)])
 colnames(res) <- newcols

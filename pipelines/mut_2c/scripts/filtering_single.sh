@@ -29,7 +29,7 @@ echo $SAMPLE
 #mutect_results=$filtering_path/mutect_stats.txt
 
 ################################################################################
- #create mutect regions 
+# create mutect regions 
 cd $FILE/muTect/
 for i in "$SAMPLE".T.call_stats.txt; do echo $i; ifix=${i%%.*};ifix=${ifix##*/};
     cp $i "$FILE"/vcf/"$ifix".T.call_stats.txt

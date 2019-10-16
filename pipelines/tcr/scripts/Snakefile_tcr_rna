@@ -71,53 +71,18 @@ VDJTOOLS=os.path.join(CONTAINERS + "vdjtools-1.2.1.simg")
 ################################################################################
 rule all:
     input: 
-        expand(FILE + "tcr_fastq/{SAMPLE}.merge.01.fastq",  SAMPLE = sample),
         expand(FILE + "tcr/{SAMPLE}.mixcr.txt",  SAMPLE = sample),
         expand(FILE + "tcr/{SAMPLE}.basicstats.txt",  SAMPLE = sample),
-        expand(FILE + "tcr/{SAMPLE}.qstat.txt",  SAMPLE = sample),
-        expand(FILE + "tcr/{SAMPLE}/out.txt",  SAMPLE = sample)
+        expand(FILE + "tcr/{SAMPLE}.qstat.txt",  SAMPLE = sample)
 
 ################################################################################
-
-#rule cr_vdj:
-#    input: sample = FILE + 'raw/{sample}/{sample}.txt', file=FILE, refs=REFS, containers=CONTAINERS, cellranger=CELLRANGER
-#    output:
-#        FILE + 'tcr/{sample}/out.txt'
-#    params:
-#        walltime="24:00", mem="32", name="sn.crvdj", threads="4"
-#    shell:
-#        "module add singularity; "
-#        "SAMPLE={input.sample}; "
-#        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-#        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-#        "rm -rf {input.file}/tcr/\"$SAMPLE_FIXED\"; "
-#        "cd {input.file}/tcr/; "
-#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.cellranger} "
-#        "   /cellranger-3.1.0/cellranger vdj "
-#        "   --id=\"$SAMPLE_FIXED\" "
-#        "   --fastqs={input.file}tcr_fastq/\"$SAMPLE_FIXED\" "
-#        "   --reference={input.refs}/refdata-cellranger-vdj-GRCm38-alts-ensembl-3.1.0/ "
-#        "   --sample=\"$SAMPLE_FIXED\" "
-#        "   --localcores={params.threads}; "
-#        "touch {output}"
-
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-################################################################################
-
 rule gunzip:
     input: 
-        fastq1=FILE + 'tcr_fastq/{sample}.01.fastq.gz', 
-        fastq2=FILE + 'tcr_fastq/{sample}.02.fastq.gz'
+        fastq1=FILE + 'rna_fastq/{sample}.01.fastq.gz', 
+        fastq2=FILE + 'rna_fastq/{sample}.02.fastq.gz'
     output: 
-        fastq1=FILE + 'tcr_fastq/{sample}.01.fastq', 
-        fastq2=FILE + 'tcr_fastq/{sample}.02.fastq'
+        fastq1=FILE + 'rna_fastq/{sample}.01.fastq', 
+        fastq2=FILE + 'rna_fastq/{sample}.02.fastq'
     params:
         walltime="16:00", mem="4", name="sn.gz", threads="1"
     shell:
@@ -126,12 +91,12 @@ rule gunzip:
 
 rule merge_fastq:
     input:
-        bamwrg1 = lambda w: list(set(expand(FILE + 'tcr_fastq/{sample}.{RUN}.01.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
-        bamwrg2 = lambda w: list(set(expand(FILE + 'tcr_fastq/{sample}.{RUN}.02.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+        bamwrg1 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.01.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
+        bamwrg2 = lambda w: list(set(expand(FILE + 'rna_fastq/{sample}.{RUN}.02.fastq', sample=w.sample, RUN=RGfromS(w.sample, SAMPLEWITHRG)))),
         tmpdir = FILE + "tmp/", file=FILE
     output:
-        output1 = FILE + 'tcr_fastq/{sample}.merge.01.fastq',
-        output2 = FILE + 'tcr_fastq/{sample}.merge.02.fastq'
+        output1 = temp(FILE + 'rna_fastq/{sample}.merge.01.fastq'),
+        output2 = temp(FILE + 'rna_fastq/{sample}.merge.02.fastq')
     params:
         walltime="12:00", mem="16", name="sn.merge", threads="1"
     message: "executing {input.bamwrg1}"
@@ -141,31 +106,28 @@ rule merge_fastq:
         shell("cat {inputstr1} > {output.output1}")
         shell("cat {inputstr2} > {output.output2}")
 
-################################################################################
-rule analyze_amplicon:
+rule analyze_shotgun:
     input:
-        fastq1 = FILE + 'tcr_fastq/{sample}.merge.01.fastq',
-        fastq2 = FILE + 'tcr_fastq/{sample}.merge.02.fastq',
+        fastq1 = FILE + 'rna_fastq/{sample}.merge.01.fastq',
+        fastq2 = FILE + 'rna_fastq/{sample}.merge.02.fastq',
         file=FILE, containers=CONTAINERS, mixcr=MIXCR
     output:
         FILE + 'tcr/{sample}.clonotypes.ALL.txt'
     params:
-        walltime="48:00", mem="36", name="sn.mixcr", threads="8"
+        walltime="64:00", mem="32", name="sn.mixcr", threads="4"
     shell:
         "module add singularity; "
         "SAMPLE={input.fastq1}; "
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}.R; "
+        "echo \"$SAMPLE_FIXED\"; "
         "cd {input.file}/tcr/; "
         "singularity exec --bind {input.file}:{input.file} {input.mixcr} "
-        "    /mixcr/mixcr-3.0.9/mixcr analyze amplicon "
-        "    -s mmu                               "
-        "    --starting-material dna "
-        "    --5-end no-v-primers  "
-        "    --3-end j-primers "
-        "    --adapters adapters-present "
-        "    --align \"--threads {params.threads}\" "
-        "    {input.fastq1} {input.fastq2} \"$SAMPLE_FIXED\".C "
+        "   /mixcr/mixcr-3.0.9/mixcr analyze shotgun "
+        "   -s mmu "
+        "   --starting-material rna "
+        "   --align \"--threads {params.threads}\" "
+        "   {input.fastq1} {input.fastq2} \"$SAMPLE_FIXED\" "
 
 ################################################################################
 rule vdjtools_convert:
@@ -175,13 +137,13 @@ rule vdjtools_convert:
     output:
         FILE + 'tcr/{sample}.mixcr.txt'
     params:
-        walltime="12:00", mem="32", name="sn.vdjconv", threads="1"
+        walltime="12:00", mem="16", name="sn.vdjconv", threads="1"
     shell:
         "module add singularity; "
         "SAMPLE={input.tcr}; "
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-        "cd {input.file}/tcr/"
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}.R; "
+        "cd {input.file}/tcr/;"
         "singularity exec --bind {input.file}:{input.file} {input.vdjtools} "
         "    java -jar -Xmx{params.mem}G /vdjtools-1.2.1/vdjtools-1.2.1.jar Convert "
         "    -S mixcr "
@@ -194,14 +156,14 @@ rule vdjtools_calculate:
         file=FILE, containers=CONTAINERS, vdjtools=VDJTOOLS
     output:
         FILE + 'tcr/{sample}.basicstats.txt',
-        FILE + 'tcr/{sample}.segments.txt',
+        FILE + 'tcr/{sample}.segments.wt.J.txt',
     params:
-        walltime="12:00", mem="16", name="sn.vdjcalc", threads="1"
+        walltime="12:00", mem="8", name="sn.vdjcalc", threads="1"
     shell:
         "module add singularity; "
         "SAMPLE={input.tcr}; "
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}.R; "
         "cd {input.file}/tcr/;"
         "singularity exec --bind {input.file}:{input.file} {input.vdjtools} "
         "    java -jar /vdjtools-1.2.1/vdjtools-1.2.1.jar CalcBasicStats"
@@ -229,12 +191,12 @@ rule vdjtools_estimate:
     output:
         FILE + 'tcr/{sample}.qstat.txt',
     params:
-        walltime="12:00", mem="16", name="sn.vdjest", threads="1"
+        walltime="12:00", mem="8", name="sn.vdjest", threads="1"
     shell:
         "module add singularity; "
         "SAMPLE={input.tcr}; "
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+        "SAMPLE_FIXED=\"\"${{SAMPLE_FIXED##*/}}\".R\"; "
         "cd {input.file}/tcr/;"
         "singularity exec --bind {input.file}:{input.file} {input.vdjtools} "
         "    java -jar /vdjtools-1.2.1/vdjtools-1.2.1.jar PlotQuantileStats "
