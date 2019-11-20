@@ -34,9 +34,6 @@ OPTITYPE_REF= os.path.join(REFS + "optitype_hla_reference_dna.fasta")
 CONTAINERS=config["containers"]
 PREPRO=os.path.join(CONTAINERS + "dsprepro-1.1.simg")
 OPTITYPE=os.path.join(CONTAINERS + "optitype-writable.simg")
-DBSNP138 = os.path.join(REFS + "dbsnp_138.b37.vcf")
-PICARD=os.path.join(CONTAINERS + "picard-latest.simg")
-SAMTOOLS=os.path.join(CONTAINERS + "samtools-1.6.simg")
 #OPTITYPE=os.path.join(CONTAINERS + "optitype-release-v1.3.1.simg")
 
 SAMPLETABLE=os.path.join(FILE + "sampletable_compass.csv")
