@@ -6,6 +6,7 @@
 from Bio import SeqIO
 from Bio.SeqUtils import IUPACData
 from collections import defaultdict
+import re
 
 # class
 class gather_peptides_class(object):
@@ -28,7 +29,7 @@ class gather_peptides_class(object):
             vcf_lines = [l.strip("\n").split("\t") for l in f.readlines() if l[0] != "#"]
 
         # sample name
-        sample_name = vcf.split("/")[-1].split(".")[0].replace("_ann", "")
+        sample_name = vcf.split("/")[-1].split(".")[0].replace(".ann", "")
 
         # go through the annotated lines and save missense mutations on which to discover peptides
         missense_mutations = []
@@ -54,10 +55,10 @@ class gather_peptides_class(object):
                     for ann in all_annotations:
                         gene = ann.split("|")[4]
                         aa_mut = ann.split("|")[10]
-                        aa_pos = aa_mut[5:-3]
-                        ref_aa = IUPACData.protein_letters_3to1[aa_mut[2:5]]
-                        alt_aa = IUPACData.protein_letters_3to1[aa_mut[-3:]]
-                        aa_mut = "p.{}{}{}".format(ref_aa, aa_pos, alt_aa)
+                        #aa_pos = aa_mut[5:-3]
+                        #ref_aa = IUPACData.protein_letters_3to1[aa_mut[2:5]]
+                        #alt_aa = IUPACData.protein_letters_3to1[aa_mut[-3:]]
+                        #aa_mut = "p.{}{}{}".format(ref_aa, aa_pos, alt_aa)
                         transcript_id = ann.split("|")[6]
                         mut = (mut_id_no_name, transcript_id)
                         missense_mutations.append(mut)
@@ -107,9 +108,18 @@ class gather_peptides_class(object):
 
                     # amino acid mutation information
                     # position in python
-                    mut_pos = int(aa_mut[5:-3]) - 1
-                    ref_aa = IUPACData.protein_letters_3to1[aa_mut[2:5]]
-                    alt_aa = IUPACData.protein_letters_3to1[aa_mut[-3:]]
+                    # for nucleotide nomenclature
+                    #mut_pos = int(aa_mut[5:-3]) - 1
+                    #ref_aa = IUPACData.protein_letters_3to1[aa_mut[2:5]]
+                    #alt_aa = IUPACData.protein_letters_3to1[aa_mut[-3:]]
+                    #ref_aa = aa_mut[2]
+                    #alt_aa = aa_mut[6]
+
+                    # for aa nomenclature
+                    m=re.split('(\d+)',aa_mut)
+                    mut_pos=int(m[1])
+                    ref_aa=m[0][2]
+                    alt_aa=m[2]
 
                     # check that it is a missense mutation
                     if ref_aa != alt_aa:

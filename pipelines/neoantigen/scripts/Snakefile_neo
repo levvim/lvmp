@@ -73,78 +73,112 @@ region=REGION_b37
 # Containers
 CONTAINERS=config["containers"]
 SNPEFF=os.path.join(CONTAINERS + "snpeff-4.3t.simg")
-NETMHC=os.path.join(CONTAINERS + "nm-1.1.simg")
+NM=os.path.join(CONTAINERS + "nm-1.1.simg")
 
 ################################################################################
 rule all:
     input: 
-        expand(FILE + 'bqsr/{SAMPLE}.pp.bam', SAMPLE = sample), 
-        #expand(FILE + 'sort/{SAMPLE}.sort.bam', SAMPLE = SAMPLEWITHRG),
-        expand(FILE + 'strelka/{SAMPLE}.T/results/passed.somatic.snvs.vcf', SAMPLE = SAMPLENOTN) ,
-        expand(FILE + 'muTect/{SAMPLE}.T.vcf', SAMPLE = SAMPLENOTN),
-        expand(FILE + 'vcf/{SAMPLE}.ann.vcf', SAMPLE = SAMPLENOTN)
+        expand(FILE + 'neoantigen/{SAMPLE}.neoantigens.txt', SAMPLE = sample)
 
 #################################################################################
-rule filter:
-    input:
-        vcf = FILE + 'vcf/{sample}.vcf', file = FILE, scripts=SCRIPTS, snpeff=SNPEFF
-    output:
-        vcf = FILE + 'vcf/{sample}.ann.vcf', fastaprot = FILE + 'vcf/{sample}.ann.fasta'
-    params:
-        walltime="24:00", mem="32", name="sn.filter", threads="1"
-    shell:
-        "module add singularity; "
-        "SAMPLE={input.bam_tumor}; "
-        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
-        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
-        " java -jar -Xmx{params.mem}G /snpEff/snpEff.jar ann "
-        " -noStats "
-        " -strict "
-        " -no-downstream "
-        " -no-intergenic "
-        " -no-intron "
-        " -no-upstream "
-        " -no-utr "
-        " -hgvs1LetterAa "
-        " -hgvs "
-        " -canon "
-        " -v "
-        " -onlyProtein "
-        " -fastaProt {output.fastaprot} "
-        " GRCh37.75 "
-        " {input.vcf} > {output} "
+#rule snpeff:
+#    input:
+#        vcf = FILE + 'vcf/{sample}.vcf', file = FILE, refs=REFS, scripts=SCRIPTS, snpeff=SNPEFF 
+#    output:
+#        vcf = FILE + 'vcf/{sample}.ann.vcf', fastaprot = FILE + 'vcf/{sample}.ann.fasta'
+#    params:
+#        walltime="24:00", mem="32", name="sn.snpeff", threads="1"
+#    shell:
+#        "module add singularity; "
+#        "SAMPLE={input.vcf}; "
+#        "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
+#        "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
+#        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
+#        " java -jar -Xmx{params.mem}G /snpEff/snpEff.jar ann "
+#        " -noStats "
+#        " -strict "
+#        " -no-downstream "
+#        " -no-intergenic "
+#        " -no-intron "
+#        " -no-upstream "
+#        " -no-utr "
+#        " -hgvs1LetterAa "
+#        " -hgvs "
+#        " -canon "
+#        " -v "
+#        " -onlyProtein "
+#        " -fastaProt {output.fastaprot} "
+#        " GRCh37.75 "
+#        " {input.vcf} > {output.vcf} "
 
 rule neo_prepro:
     input:
-        vcf = FILE + 'vcf/{sample}.ann.vcf', fastaprot = FILE + 'vcf/{sample}.ann.fasta', file = FILE, scripts=SCRIPTS, snpeff=SNPEFF
+        vcf = FILE + 'vcf/{sample}.ann.vcf', fastaprot = FILE + 'vcf/{sample}.ann.fasta', file = FILE, refs=REFS, scripts=SCRIPTS, nm=NM
     output:
-        
+        pepvcf = FILE + 'neoantigen/{sample}.pep.vcf', mt = FILE + 'neoantigen/{sample}.mt.txt', wt = FILE + 'neoantigen/{sample}.wt.txt'
     params:
-        walltime="24:00", mem="32", name="sn.filter", threads="1"
+        walltime="24:00", mem="8", name="sn.neo_prepro", threads="1"
     shell:
         "module add singularity; "
-        "SAMPLE={input.bam_tumor}; "
+        "SAMPLE={input.vcf}; "
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
         "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.snpeff} "
-        " python gather_peptides.py {input.fastaprot} {output}; "
+        "grep CHROM {input.vcf} > {output.pepvcf}; "
+        "grep \"|\" {input.vcf} >> {output.pepvcf}; "
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.nm} "
+        "   python {input.scripts}/gather_peptides.py "
+        "   --vcf {output.pepvcf} "
+        "   --fastaprot {input.fastaprot} "
+        "   --output_mt {output.mt} "
+        "   --output_wt {output.wt} "
+        #"   ~/programs/miniconda3/bin/python {input.scripts}/gather_peptides.py "
 
-rule neo:
+rule netmhc:
     input:
-        vcf = FILE + 'vcf/{sample}.ann.vcf', fastaprot = FILE + 'vcf/{sample}.ann.fasta', snpeff=SNPEFF, file = FILE, scripts=SCRIPTS
+        mt = FILE + 'neoantigen/{sample}.mt.txt', wt = FILE + 'neoantigen/{sample}.wt.txt', hla = FILE + 'optitype/{sample}/{sample}.hla',  file = FILE, refs=REFS, scripts=SCRIPTS, nm=NM
     output:
-        
+        mt = FILE + 'neoantigen/{sample}.mt.out.txt', wt = FILE + 'neoantigen/{sample}.wt.out.txt', mt_xls = FILE + 'neoantigen/{sample}.mt.out.xls', wt_xls = FILE + 'neoantigen/{sample}.wt.out.xls'
+
     params:
-        walltime="24:00", mem="32", name="sn.filter", threads="1"
+        walltime="24:00", mem="24", name="sn.netmhc", threads="1"
     shell:
         "module add singularity; "
-        "SAMPLE={input.bam_tumor}; "
+        "SAMPLE={input.mt}; "
+        "SAMPLE=${{SAMPLE%%.*}}; "
+        "SAMPLE=${{SAMPLE##*/}}; "
+        "cd {input.file}; "
+        "mkdir -p scratch; "
+        "cat {input.hla} | while read line; do "
+        "   singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.nm} "
+        "       /netMHC-3.4/netMHC "
+        "       -a $line -l 9 --xls={output.mt_xls}.$line {input.mt} > {output.mt}.$line; "
+        "   singularity exec --bind {input.file}:{input.file} --bind {input.scripts}:{input.scripts} {input.nm} "
+        "       /netMHC-3.4/netMHC "
+        "       -a $line -l 9 --xls={output.wt_xls}.$line {input.wt} > {output.wt}.$line; "
+        "done; "
+        "cat {output.wt}.* > {output.wt}; " 
+        "cat {output.wt_xls}.* > {output.wt_xls}; " 
+        "cat {output.mt}.* > {output.mt}; " 
+        "cat {output.mt_xls}.* > {output.mt_xls}; " 
+
+
+rule neo_postpro:
+    input:
+        mt = FILE + 'neoantigen/{sample}.mt.out.txt', wt = FILE + 'neoantigen/{sample}.wt.out.txt', hla = FILE + 'optitype/{sample}/{sample}.hla', file = FILE, refs=REFS, scripts=SCRIPTS, nm=NM
+    output:
+        neo = FILE + 'neoantigen/{sample}.neoantigens.txt', fasta = FILE + 'neoantigen/{sample}.neoantigens.fasta'
+    params:
+        walltime="24:00", mem="8", name="sn.postpro", threads="1"
+    shell:
+        "module add singularity; "
+        "SAMPLE={input.vcf}; "
         "SAMPLE_FIXED=${{SAMPLE%%.*}}; "
         "SAMPLE_FIXED=${{SAMPLE_FIXED##*/}}; "
         "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.nm} "
-        " python netmhc_calcs.py {input.fastaprot} {output}; "
-        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.nm} "
-        " python make_files.py {input.fastaprot} {output}; "
-
+        "   python {input.scripts}/make_files.py "
+        "   --mt {input.mt} "
+        "   --wt {input.wt} "
+        "   --hla {input.hla} "
+        "   --output_neo {output.neo} "
+        "   --output_fasta {output.fasta}; "
 
