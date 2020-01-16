@@ -1,6 +1,5 @@
-#levi mangarin wolchok lab 2016
-# lvmp hla specific to downloading files from SRA
-# first generate all fastq files, then optitype
+# levi mangarin wolchok lab 2019
+# lvmp: run phylowgs for clonal tree reconstruction using vcf and cnv files
 
 ################################################################################
 # Samples

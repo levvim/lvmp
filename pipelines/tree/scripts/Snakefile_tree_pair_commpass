@@ -1,0 +1,147 @@
+# levi mangarin wolchok lab 2019
+# lvmp: run phylowgs for clonal tree reconstruction using data from SRA
+
+################################################################################
+# Samples
+
+if ' ' in str(config["samples"]):
+    SAMPLE=config["samples"].split()
+else:
+    SAMPLE=config["samples"]
+
+if ' ' in str(config["RID"]):
+    RID=config["RID"].split()
+else:
+    RID=config["RID"]
+
+sample=SAMPLE
+################################################################################
+# References
+
+FILE=config["file"]
+
+# refs for using grch37 b37 (broad)
+REFS=config["refs"]
+SCRIPTS=config["scripts"]
+REF = os.path.join(REFS + "human_g1k_v37_decoy.fasta")
+
+# Containers
+CONTAINERS=config["containers"]
+PHYLOWGS=os.path.join(CONTAINERS + "phylowgs-1.2.simg")
+BAMREADCOUNT=os.path.join(CONTAINERS + "bam-readcount-0.7.4.simg")
+
+SAMPLETABLE=os.path.join(FILE + "sampletable_compass_paired.csv")
+################################################################################
+rule all:
+    #input: expand(FILE + "bam/{SAMPLE}.bam", SAMPLE = sample)
+    #input: expand(FILE + "vcf/{SAMPLE}.brc.txt", SAMPLE = sample),
+    #input: expand(FILE + "tree_out/{SAMPLE}/outdir/{SAMPLE}_ssm.txt", SAMPLE = sample)
+    input: expand(FILE + 'tree/with_cnvs/{SAMPLE}/chains/trees.zip', SAMPLE=sample),
+        expand(FILE + 'tree/no_cnvs/{SAMPLE}/chains/trees.zip', SAMPLE=sample)
+
+################################################################################
+rule dl_sam:
+    input:
+        file=FILE,  sampletable=SAMPLETABLE
+    output:
+        normal=FILE + 'bam/{sample}.bam'
+    params:
+        walltime="36:00", mem="16", name="sn.sra", threads="1", SID='{sample}'
+    shell:
+        "module add samtools; "
+        "i={params.SID}; "
+        "SAMPLE=\"$(grep $i {input.sampletable} | head -n 1 | cut -d\',\' -f 2)\"; "
+        "echo $SAMPLE; "
+        "echo $SAMPLE; "
+        "cd /data/wolchok/PROJECT/compass_cnv/sam; "
+        "/data/wolchok/PROJECT/compass_cnv/sratoolkit.2.9.2-centos_linux64/bin/sam-dump.2.9.2 $SAMPLE | samtools view -bh - > {output.normal}; "
+        "rm -f {input.file}sam/sra/$SAMPLE.sra.cache; "
+        "rm -f {input.file}sam/sra/$SAMPLE*cache; "
+        "rm -f {input.file}sam/sra/$SAMPLE.sra.vdbcache.cache; "
+        "rm -f {input.file}sam/fast.tmp/$SAMPLE*; "
+
+rule bam_readcount:
+    input:
+        file=FILE, bamreadcount=BAMREADCOUNT, refs=REFS, ref=REF,
+        reg = FILE + 'vcf/{sample}.regions.txt',
+        bam = FILE + 'bam/{sample}.bam'
+    output:
+        brc = FILE + 'vcf/{sample}.brc.txt'
+    params:
+        walltime="16:00", mem="8", name="sn.brc", threads="1"
+    shell:
+        'module add singularity; '
+        'module add samtools; '
+        'samtools index {input.bam}; '
+        "singularity exec --bind {input.file}:{input.file} --bind {input.refs}:{input.refs} {input.bamreadcount} "
+        "   bam-readcount "
+        "    -f {input.ref} "
+        "    -l {input.reg} "
+        "    -i "
+        "    -b 15 "
+        "    -w 1 "
+        "    {input.bam} "
+        "    > {output} "
+
+rule tree:
+    input:
+        file=FILE, phylowgs=PHYLOWGS,
+        ssm = FILE + 'tree/no_cnvs/{sample}/ssm_data.txt',
+        cnv = FILE + 'tree/no_cnvs/{sample}/cnv_data.txt',
+        json = FILE + 'tree/no_cnvs/{sample}/params.json',
+        inputdir = FILE + 'tree/no_cnvs/{sample}'
+    output:
+        trees = FILE + 'tree/no_cnvs/{sample}/chains/trees.zip'
+    params:
+        walltime="127:00", mem="8", name="sn.tree", threads="1"
+    shell:
+        'module add singularity; '
+        "SAMPLE={input.ssm}; "
+        "SAMPLE_FIXED=${{SAMPLE##*/}}; "
+        "cd {input.inputdir}; "
+        "singularity exec --bind {input.file}:{input.file} {input.phylowgs} "
+        "   python2 /scripts/phylowgs-master/multievolve.py "
+        "   --num-chains 4 "
+        "   --params {input.json} "
+        "   --ssms {input.ssm} "
+        "   --cnvs {input.cnv}; "
+        "singularity exec --bind {input.file}:{input.file} {input.phylowgs} "
+        "   python2 /scripts/phylowgs-master/write_results.py "
+        "   \"$SAMPLE_FIXED\"  "
+        "   {output.trees} "
+        "   \"$SAMPLE_FIXED\".summ.json.gz "
+        "   \"$SAMPLE_FIXED\".muts.json.gz "
+        "   \"$SAMPLE_FIXED\".mutass.zip "
+
+rule tree_cnv:
+    input:
+        file=FILE, phylowgs=PHYLOWGS,
+        ssm = FILE + 'tree/with_cnvs/{sample}/ssm_data.txt',
+        cnv = FILE + 'tree/with_cnvs/{sample}/cnv_data.txt',
+        json = FILE + 'tree/with_cnvs/{sample}/params.json',
+        inputdir = FILE + 'tree/with_cnvs/{sample}'
+    output:
+        trees = FILE + 'tree/with_cnvs/{sample}/chains/trees.zip'
+    params:
+        walltime="127:00", mem="8", name="sn.tree", threads="1"
+    shell:
+        'module add singularity; '
+        "SAMPLE={input.ssm}; "
+        "SAMPLE_FIXED=${{SAMPLE##*/}}; "
+        "cd {input.inputdir}; "
+        "singularity exec --bind {input.file}:{input.file} {input.phylowgs} "
+        "   python2 /scripts/phylowgs-master/multievolve.py "
+        "   --num-chains 4 "
+        "   --params {input.json} "
+        "   --ssms {input.ssm} "
+        "   --cnvs {input.cnv}; "
+        "singularity exec --bind {input.file}:{input.file} {input.phylowgs} "
+        "   python2 /scripts/phylowgs-master/write_results.py "
+        "   \"$SAMPLE_FIXED\"  "
+        "   {output.trees} "
+        "   \"$SAMPLE_FIXED\".summ.json.gz "
+        "   \"$SAMPLE_FIXED\".muts.json.gz "
+        "   \"$SAMPLE_FIXED\".mutass.zip "
+
+
+

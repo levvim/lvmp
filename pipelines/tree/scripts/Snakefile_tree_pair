@@ -1,6 +1,5 @@
-#levi mangarin wolchok lab 2016
-# lvmp hla specific to downloading files from SRA
-# first generate all fastq files, then optitype
+# levi mangarin wolchok lab 2019
+# lvmp: run phylowgs for paired clonal tree reconstruction using bam and vcf files
 
 ################################################################################
 # Samples
@@ -39,26 +38,6 @@ rule all:
     #input: expand(FILE + "tree_out/{SAMPLE}/outdir/{SAMPLE}_ssm.txt", SAMPLE = sample)
 
 ################################################################################
-#rule dl_sam:
-#    input:
-#        file=FILE,  sampletable=SAMPLETABLE
-#    output:
-#        normal=FILE + 'bam/{sample}.bam'
-#    params:
-#        walltime="36:00", mem="16", name="sn.sra", threads="1", SID='{sample}'
-#    shell:
-#        "module add samtools; "
-#        "i={params.SID}; "
-#        "SAMPLE=\"$(grep $i {input.sampletable} | head -n 1 | cut -d\',\' -f 2)\"; "
-#        "echo $SAMPLE; "
-#        "echo $SAMPLE; "
-#        "cd /data/wolchok/PROJECT/compass_cnv/sam; "
-#        "/data/wolchok/PROJECT/compass_cnv/sratoolkit.2.9.2-centos_linux64/bin/sam-dump.2.9.2 $SAMPLE | samtools view -bh - > {output.normal}; "
-#        "rm -f {input.file}sam/sra/$SAMPLE.sra.cache; "
-#        "rm -f {input.file}sam/sra/$SAMPLE*cache; "
-#        "rm -f {input.file}sam/sra/$SAMPLE.sra.vdbcache.cache; "
-#        "rm -f {input.file}sam/fast.tmp/$SAMPLE*; "
-
 rule bam_readcount:
     input:
         file=FILE, bamreadcount=BAMREADCOUNT, refs=REFS, ref=REF,
@@ -85,8 +64,8 @@ rule bam_readcount:
 rule tree:
     input:
         file=FILE, phylowgs=PHYLOWGS,
-        vcf = FILE + 'vcf/{sample}.vcf',
-        facets = FILE + 'tree/{sample}.facets_output.txt'
+        ssm = FILE + 'ssm/{sample}.ssm.txt',
+        cnvs = FILE + 'cnvs/{sample}.cnv.txt'
     output:
         ssm = FILE + 'tree_out/{sample}/outdir/{sample}_ssm.txt'
     params:
@@ -99,9 +78,9 @@ rule tree:
         "mkdir -p {input.file}/tree_out/\"$SAMPLE_FIXED\" "
         "cd {input.file}/tree/; "
         "singularity exec --bind {input.file}:{input.file} {input.phylowgs} "
-        "    /scripts/dispatcher.sh "
-        "    -s \"$SAMPLE_FIXED\" "
-        "    -v {input.vcf} "
-        "    -f {input.facets} "
-        "    -o {input.file}/tree_out/ "
+        "   python2 multievolve.py "
+        "   --num-chains 4 "
+        "   --params params.json "
+        "   --ssms ssm_data.txt "
+        "   --cnvs cnv_data.txt "
 
